@@ -221,7 +221,7 @@ pri func decoder.calculate_loop_filters!() {
             level = this.filt_level as base.u32
             if not this.seg_enabled {
                 // No-op.
-            } else if not this.filt_deltas_enabled {
+            } else if this.seg_absolute {
                 level = this.util.sign_extend_convert_u8_u32(a: this.seg_strengths[seg])
             } else {
                 // The (level as base.u32) is redundant, equivalent to level, but

@@ -84269,7 +84269,7 @@ wuffs_vp8__decoder__calculate_loop_filters(
     while (v_inner < 2u) {
       v_level = ((uint32_t)(self->private_impl.f_filt_level));
       if ( ! self->private_impl.f_seg_enabled) {
-      } else if ( ! self->private_impl.f_filt_deltas_enabled) {
+      } else if (self->private_impl.f_seg_absolute) {
         v_level = wuffs_base__utility__sign_extend_convert_u8_u32(self->private_impl.f_seg_strengths[v_seg]);
       } else {
         v_level = ((uint32_t)(((uint32_t)(v_level)) + wuffs_base__utility__sign_extend_convert_u8_u32(self->private_impl.f_seg_strengths[v_seg])));

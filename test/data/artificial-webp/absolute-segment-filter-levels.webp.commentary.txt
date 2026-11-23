@@ -1,0 +1,26 @@
+absolute-segment-filter-levels.webp is a 24×19 lossy (VP8) image whose frame
+header has both segmentation enabled, with absolute (not delta) values
+(segment_feature_mode = 1), and loop filter adjustments enabled
+(loop_filter_adj_enable = 1, with every ref_frame and mb_mode delta zero).
+
+RFC 6386 section 9.3 says that, with segment_feature_mode = 1, each segment's
+loop filter level replaces the frame's loop_filter_level, whether or not
+loop_filter_adj_enable is set. libwebp's PrecomputeFilterStrengths (in
+src/dec/frame_dec.c) does the same: it tests the segment header's
+absolute_delta_ flag, not the filter header's use_lf_delta_.
+
+The four segments' loop filter levels are 52, 22, 10 and 3.
+
+It was made from test/data/peacock.24x19.png by libwebp 1.5.0's WebPEncode
+with quality 10, segments 4, filter_strength 60 and sns_strength 100 (and the
+other options at their defaults), using a libwebp built with one line of
+PutFilterHeader in src/enc/syntax_enc.c changed from
+
+  const int use_lf_delta = (hdr->i4x4_lf_delta_ != 0);
+
+to
+
+  const int use_lf_delta = 1;
+
+so that loop filter adjustments are enabled (but all zero). An unmodified
+libwebp encoder never enables them, as i4x4_lf_delta_ is always zero.

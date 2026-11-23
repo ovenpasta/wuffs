@@ -470,6 +470,13 @@ test_mimic_webp_lossless_decode_image_4002k_24bpp() {
 }
 
 const char*  //
+test_mimic_webp_lossy_decode_absolute_segment_filter_levels() {
+  CHECK_FOCUS(__func__);
+  return do_test_mimic_webp_decode(
+      "test/data/artificial-webp/absolute-segment-filter-levels.webp");
+}
+
+const char*  //
 test_mimic_webp_lossy_decode_image_19k_8bpp() {
   CHECK_FOCUS(__func__);
   return do_test_mimic_webp_decode("test/data/bricks-gray.lossy.webp");
@@ -737,6 +744,7 @@ proc g_tests[] = {
     test_mimic_webp_lossless_decode_image_77k_8bpp,
     test_mimic_webp_lossless_decode_image_552k_32bpp,
     test_mimic_webp_lossless_decode_image_4002k_24bpp,
+    test_mimic_webp_lossy_decode_absolute_segment_filter_levels,
     test_mimic_webp_lossy_decode_image_19k_8bpp,
     test_mimic_webp_lossy_decode_image_40k_24bpp,
     test_mimic_webp_lossy_decode_image_77k_24bpp,
