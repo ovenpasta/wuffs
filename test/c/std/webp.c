@@ -88,6 +88,60 @@ wuffs_webp_decode(uint64_t* n_bytes_out,
 // --------
 
 const char*  //
+test_wuffs_webp_decode_inconsistent_width_and_height() {
+  CHECK_FOCUS(__func__);
+  wuffs_webp__decoder* dec = &g_webp_decoder;
+  CHECK_STATUS("initialize",
+               wuffs_webp__decoder__initialize(
+                   dec, sizeof *dec, WUFFS_VERSION,
+                   WUFFS_INITIALIZE__LEAVE_INTERNAL_BUFFERS_UNINITIALIZED));
+
+  wuffs_base__io_buffer src = ((wuffs_base__io_buffer){
+      .data = g_src_slice_u8,
+  });
+  CHECK_STRING(read_file(
+      &src, "test/data/hippopotamus.masked-with-muybridge.lossless.webp"));
+
+  // Change the VP8X chunk's canvas width (minus one) from 35 to 34, so that it
+  // no longer matches the VP8L chunk's 36x28.
+  if ((src.meta.wi < 27) || (src.data.ptr[24] != 35)) {
+    RETURN_FAIL("unexpected VP8X chunk");
+  }
+  src.data.ptr[24] = 34;
+
+  wuffs_base__image_config ic = ((wuffs_base__image_config){});
+  CHECK_STATUS("decode_image_config",
+               wuffs_webp__decoder__decode_image_config(dec, &ic, &src));
+  const uint32_t w = 35;
+  const uint32_t h = 28;
+  if ((wuffs_base__pixel_config__width(&ic.pixcfg) != w) ||
+      (wuffs_base__pixel_config__height(&ic.pixcfg) != h)) {
+    RETURN_FAIL("dimensions: have %" PRIu32 "x%" PRIu32 ", want 35x28",
+                wuffs_base__pixel_config__width(&ic.pixcfg),
+                wuffs_base__pixel_config__height(&ic.pixcfg));
+  }
+
+  wuffs_base__pixel_buffer pb = ((wuffs_base__pixel_buffer){});
+  CHECK_STATUS("set_from_slice", wuffs_base__pixel_buffer__set_from_slice(
+                                     &pb, &ic.pixcfg, g_pixel_slice_u8));
+  wuffs_base__status status = wuffs_webp__decoder__decode_frame(
+      dec, &pb, &src, WUFFS_BASE__PIXEL_BLEND__SRC, g_work_slice_u8, NULL);
+  if (status.repr != wuffs_webp__error__inconsistent_width_and_height) {
+    RETURN_FAIL("decode_frame: have \"%s\", want \"%s\"", status.repr,
+                wuffs_webp__error__inconsistent_width_and_height);
+  }
+
+  // The frame_dirty_rect should still be within the image.
+  wuffs_base__rect_ie_u32 r = wuffs_webp__decoder__frame_dirty_rect(dec);
+  if ((r.max_excl_x > w) || (r.max_excl_y > h)) {
+    RETURN_FAIL("frame_dirty_rect: have (%" PRIu32 ", %" PRIu32 ")-(%" PRIu32
+                ", %" PRIu32 "), want within (0, 0)-(35, 28)",
+                r.min_incl_x, r.min_incl_y, r.max_excl_x, r.max_excl_y);
+  }
+  return NULL;
+}
+
+const char*  //
 test_wuffs_webp_decode_interface_lossless() {
   CHECK_FOCUS(__func__);
   wuffs_webp__decoder* dec = &g_webp_decoder;
@@ -125,6 +179,20 @@ test_wuffs_webp_decode_interface_narrow_back_reference() {
       wuffs_webp__decoder__upcast_as__wuffs_base__image_decoder(dec),
       "test/data/artificial-webp/narrow-back-reference.webp", 1, 4, 0xFF4080C0,
       NULL);
+}
+
+const char*  //
+test_wuffs_webp_decode_interface_vp8x_alpha_lossless() {
+  CHECK_FOCUS(__func__);
+  wuffs_webp__decoder* dec = &g_webp_decoder;
+  CHECK_STATUS("initialize",
+               wuffs_webp__decoder__initialize(
+                   dec, sizeof *dec, WUFFS_VERSION,
+                   WUFFS_INITIALIZE__LEAVE_INTERNAL_BUFFERS_UNINITIALIZED));
+  return do_test__wuffs_base__image_decoder(
+      wuffs_webp__decoder__upcast_as__wuffs_base__image_decoder(dec),
+      "test/data/hippopotamus.masked-with-muybridge.lossless.webp", 36, 28,
+      0x7D787878, NULL);
 }
 
 const char*  //
@@ -517,6 +585,13 @@ test_mimic_webp_lossless_decode_narrow_back_reference() {
 }
 
 const char*  //
+test_mimic_webp_lossless_decode_vp8x_alpha() {
+  CHECK_FOCUS(__func__);
+  return do_test_mimic_webp_decode(
+      "test/data/hippopotamus.masked-with-muybridge.lossless.webp");
+}
+
+const char*  //
 test_mimic_webp_lossy_decode_absolute_segment_filter_levels() {
   CHECK_FOCUS(__func__);
   return do_test_mimic_webp_decode(
@@ -793,9 +868,11 @@ bench_mimic_webp_lossy_decode_image_4002k_24bpp() {
 proc g_tests[] = {
 
     test_wuffs_webp_decode_filter_alph,
+    test_wuffs_webp_decode_inconsistent_width_and_height,
     test_wuffs_webp_decode_interface_lossless,
     test_wuffs_webp_decode_interface_lossy,
     test_wuffs_webp_decode_interface_narrow_back_reference,
+    test_wuffs_webp_decode_interface_vp8x_alpha_lossless,
     test_wuffs_webp_decode_interface_vp8x_alpha_lossy,
     test_wuffs_webp_decode_many_small_reads,
     test_wuffs_webp_decode_many_small_reads_uncompressed_alph,
@@ -808,6 +885,7 @@ proc g_tests[] = {
     test_mimic_webp_lossless_decode_image_552k_32bpp,
     test_mimic_webp_lossless_decode_image_4002k_24bpp,
     test_mimic_webp_lossless_decode_narrow_back_reference,
+    test_mimic_webp_lossless_decode_vp8x_alpha,
     test_mimic_webp_lossy_decode_absolute_segment_filter_levels,
     test_mimic_webp_lossy_decode_filter_clip,
     test_mimic_webp_lossy_decode_image_19k_8bpp,

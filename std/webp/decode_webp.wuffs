@@ -20,6 +20,7 @@ pub status "#bad chunk order"
 pub status "#bad color cache"
 pub status "#bad header"
 pub status "#bad transform"
+pub status "#inconsistent width and height"
 pub status "#short chunk"
 pub status "#truncated input"
 pub status "#unsupported WebP file"
@@ -53,7 +54,7 @@ pub struct decoder? implements base.image_decoder(
         // 0x20 = VP8X and seen VP8X, ICCP†, ANIM†, ANMF   chunks
         // 0x40 = VP8X and seen VP8X, ICCP†, ANIM†, ANMF†, ALPH   chunks
         // 0x81 = VP8X and seen VP8X, ICCP†, ANIM†, ANMF†, ALPH†, VP8  chunks
-        // 0x82 = VP8X and seen VP8X, ICCP†, ANIM†, ANMF†, ALPH†, VP8L chunks
+        // 0x82 = VP8X and seen VP8X, ICCP†, ANIM†, ANMF†,        VP8L chunks
         //
         // Chunks marked with a † are optional.
         variant : base.u8,
@@ -314,6 +315,8 @@ pri func decoder.do_decode_image_config_limited?(dst: nptr base.image_config, sr
 
 pri func decoder.do_decode_image_config_limited_vp8l?(src: base.io_reader) {
     var c32            : base.u32
+    var width          : base.u32[..= 0x4000]
+    var height         : base.u32[..= 0x4000]
     var transform_size : base.u32[..= 0x400_0000]
 
     c32 = args.src.read_u8_as_u32?()
@@ -321,9 +324,9 @@ pri func decoder.do_decode_image_config_limited_vp8l?(src: base.io_reader) {
         return "#bad header"
     }
     c32 = args.src.read_u32le?()
-    this.width = (c32 & 0x3FFF) + 1
+    width = (c32 & 0x3FFF) + 1
     c32 >>= 14
-    this.height = (c32 & 0x3FFF) + 1
+    height = (c32 & 0x3FFF) + 1
     c32 >>= 14
     // In theory, (c32 & 1) would let us discriminate between
     // base.PIXEL_FORMAT__BGRX and base.PIXEL_FORMAT__BGRA_NONPREMUL, but the
@@ -334,6 +337,17 @@ pri func decoder.do_decode_image_config_limited_vp8l?(src: base.io_reader) {
         return "#bad header"
     }
 
+    if this.vp8x_header_flags <> 0 {
+        // For a VP8L chunk inside a VP8X container, the VP8X chunk has already
+        // set this.width, this.height and the workbuf offsets.
+        if (width <> this.width) or (height <> this.height) {
+            return "#inconsistent width and height"
+        }
+        return ok
+    }
+
+    this.width = width
+    this.height = height
     transform_size = 4 * ((this.width + 3) >> 2) * ((this.height + 3) >> 2)
     this.workbuf_offset_for_transform[0] = (4 * this.width * this.height) + (0 * transform_size)
     this.workbuf_offset_for_transform[1] = (4 * this.width * this.height) + (1 * transform_size)
@@ -546,9 +560,16 @@ pri func decoder.do_decode_frame?(dst: ptr base.pixel_buffer, src: base.io_reade
             break
 
         } else if this.sub_chunk_type == 'VP8L'le {
-            if (this.vp8x_header_flags & 0x10) <> 0 {
+            // A VP8L chunk has its own alpha channel. The VP8X alpha bit may
+            // be set (and is, in libwebp's output) but an ALPH chunk may not
+            // precede a VP8L chunk.
+            if this.variant == 0x40 {
                 return "#bad ALPH+VP8L combination"
+            } else if this.sub_chunk_length < 5 {
+                return "#short chunk"
             }
+            this.sub_chunk_length -= 5
+            this.do_decode_image_config_limited_vp8l?(src: args.src)
             this.variant = 0x82
             break
 

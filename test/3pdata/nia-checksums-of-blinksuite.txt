@@ -195,7 +195,7 @@ BAD 0dba213a test/3pdata/blinksuite/webp-animated-semitransparent4.webp
 BAD ae7f1fcf test/3pdata/blinksuite/webp-animated.webp
 OK. eb191e45 test/3pdata/blinksuite/webp-color-no-profile-lossy.webp
 OK. 9aa7bc9a test/3pdata/blinksuite/webp-color-profile-crash.webp
-BAD f234aa8a test/3pdata/blinksuite/webp-color-profile-lossless.webp
+OK. b6000be6 test/3pdata/blinksuite/webp-color-profile-lossless.webp
 OK. db8c197f test/3pdata/blinksuite/webp-color-profile-lossy-alpha.webp
 OK. 684e3635 test/3pdata/blinksuite/webp-color-profile-lossy.webp
 BAD ed67a9a5 test/3pdata/blinksuite/wrong-block-length.gif
