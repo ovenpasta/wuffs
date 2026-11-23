@@ -84280,7 +84280,7 @@ wuffs_vp8__decoder__calculate_loop_filters(
           v_level = ((uint32_t)(((uint32_t)(v_level)) + wuffs_base__utility__sign_extend_convert_u8_u32(self->private_impl.f_filt_deltas[1u][0u])));
         }
       }
-      if (v_level >= 2147483648u) {
+      if ((v_level == 0u) || (v_level >= 2147483648u)) {
         self->private_impl.f_loop_filters[((2u * v_seg) + v_inner)] = 0u;
         v_inner += 1u;
         continue;

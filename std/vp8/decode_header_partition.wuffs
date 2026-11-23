@@ -240,7 +240,7 @@ pri func decoder.calculate_loop_filters!() {
                 }
             }
 
-            if level >= 0x8000_0000 {
+            if (level == 0) or (level >= 0x8000_0000) {
                 this.loop_filters[(2 * seg) + inner] = 0
                 inner += 1
                 continue

@@ -69,7 +69,7 @@ OK. d97ce4e8 test/3pdata/blinksuite/cs-uma-ycbcr-other.jpg
 OK. a2a940bc test/3pdata/blinksuite/cs-uma-ycck.jpg
 OK. b6000be6 test/3pdata/blinksuite/dice.png
 BAD 1023c20a test/3pdata/blinksuite/empty-frame.png
-OK. 4a495d9f test/3pdata/blinksuite/flip.webp
+OK. cd1850b9 test/3pdata/blinksuite/flip.webp
 OK. eff36075 test/3pdata/blinksuite/flowchart.jpg
 OK. 20ff1df8 test/3pdata/blinksuite/full2loop.gif
 OK. dc814e29 test/3pdata/blinksuite/gif-loop-count.gif
@@ -100,7 +100,7 @@ BAD 145962c5 test/3pdata/blinksuite/invalid-animated-webp4.webp
 OK. 2ba1fc10 test/3pdata/blinksuite/invalid_vp8_vp8x.webp
 OK. 0da5f37e test/3pdata/blinksuite/jpeg-height-exif-orientation.jpg
 OK. 4409dca6 test/3pdata/blinksuite/large-gif-checkerboard.gif
-OK. d67648b6 test/3pdata/blinksuite/large.webp
+OK. 0ff2a001 test/3pdata/blinksuite/large.webp
 BAD 2f310e57 test/3pdata/blinksuite/missing-eoi.jpg
 OK. 72bbe2b6 test/3pdata/blinksuite/motion-jpeg-single-frame.jpg
 OK. 0268284a test/3pdata/blinksuite/mu.png
@@ -180,7 +180,7 @@ OK. 1b1f5f96 test/3pdata/blinksuite/stripes-large.png
 OK. 6b85cdb9 test/3pdata/blinksuite/stripes-small.png
 OK. 16c2c0fe test/3pdata/blinksuite/test-load.jpg
 OK. 6fbda804 test/3pdata/blinksuite/test.webp
-OK. eb16e76c test/3pdata/blinksuite/test2.webp
+OK. a03ccb7f test/3pdata/blinksuite/test2.webp
 OK. 19d3a207 test/3pdata/blinksuite/test3.webp
 OK. 56224156 test/3pdata/blinksuite/truncated.webp
 BAD 1dfa35c6 test/3pdata/blinksuite/truncated2.webp
@@ -194,7 +194,7 @@ BAD d26b2bd9 test/3pdata/blinksuite/webp-animated-semitransparent3.webp
 BAD 0dba213a test/3pdata/blinksuite/webp-animated-semitransparent4.webp
 BAD ae7f1fcf test/3pdata/blinksuite/webp-animated.webp
 OK. eb191e45 test/3pdata/blinksuite/webp-color-no-profile-lossy.webp
-OK. 60116c2c test/3pdata/blinksuite/webp-color-profile-crash.webp
+OK. 9aa7bc9a test/3pdata/blinksuite/webp-color-profile-crash.webp
 BAD f234aa8a test/3pdata/blinksuite/webp-color-profile-lossless.webp
 OK. db8c197f test/3pdata/blinksuite/webp-color-profile-lossy-alpha.webp
 OK. 684e3635 test/3pdata/blinksuite/webp-color-profile-lossy.webp
