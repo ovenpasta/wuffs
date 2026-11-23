@@ -84294,7 +84294,7 @@ wuffs_vp8__decoder__calculate_loop_filters(
         } else {
           v_ilevel >>= 2u;
         }
-        v_ilevel = wuffs_base__u32__max(v_ilevel, ((uint32_t)(((uint8_t)(9u - self->private_impl.f_filt_sharpness)))));
+        v_ilevel = wuffs_base__u32__min(v_ilevel, ((uint32_t)(((uint8_t)(9u - self->private_impl.f_filt_sharpness)))));
       }
       if ((v_ilevel < 1u) || (2147483648u <= v_ilevel)) {
         v_ilevel = 1u;

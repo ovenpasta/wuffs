@@ -143,6 +143,7 @@ OK. dcbb225a test/data/hippopotamus.ppm
 OK. ed4b78fc test/data/hippopotamus.regular.gif
 OK. dcbb225a test/data/hippopotamus.regular.png
 BAD e4c5926b test/data/hippopotamus.regular.truncated.png
+OK. e8d7dd51 test/data/hippopotamus.sharpness3.lossy.webp
 OK. 57441dc9 test/data/mona-lisa.21x32.c3q1.handsum
 OK. 39d18fce test/data/mona-lisa.21x32.c3q4.handsum
 OK. f6bb81e2 test/data/mona-lisa.21x32.etc2.pkm

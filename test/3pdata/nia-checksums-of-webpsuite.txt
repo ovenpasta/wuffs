@@ -63,9 +63,9 @@ OK. 6706e719 test/3pdata/webpsuite/lossless_vec_2_6.webp
 OK. 6706e719 test/3pdata/webpsuite/lossless_vec_2_7.webp
 OK. 6706e719 test/3pdata/webpsuite/lossless_vec_2_8.webp
 OK. 6706e719 test/3pdata/webpsuite/lossless_vec_2_9.webp
-OK. a62056d3 test/3pdata/webpsuite/lossy_alpha1.webp
-OK. 7d50b493 test/3pdata/webpsuite/lossy_alpha2.webp
-OK. 3a84e899 test/3pdata/webpsuite/lossy_alpha3.webp
+OK. f0442da6 test/3pdata/webpsuite/lossy_alpha1.webp
+OK. fd083f7a test/3pdata/webpsuite/lossy_alpha2.webp
+OK. 8842c874 test/3pdata/webpsuite/lossy_alpha3.webp
 OK. a9d10d15 test/3pdata/webpsuite/lossy_alpha4.webp
 OK. ac62b1e6 test/3pdata/webpsuite/lossy_extreme_probabilities.webp
 OK. 84ff1fbf test/3pdata/webpsuite/lossy_q0_f100.webp
@@ -76,8 +76,8 @@ OK. 315bbd77 test/3pdata/webpsuite/peak.pgm
 OK. 6706e719 test/3pdata/webpsuite/peak.png
 OK. 6706e719 test/3pdata/webpsuite/peak.ppm
 OK. 6d2a2c1f test/3pdata/webpsuite/segment01.webp
-OK. b7705924 test/3pdata/webpsuite/segment02.webp
-OK. 98115d46 test/3pdata/webpsuite/segment03.webp
+OK. 1a73db2f test/3pdata/webpsuite/segment02.webp
+OK. 556c5224 test/3pdata/webpsuite/segment03.webp
 OK. 9fba8052 test/3pdata/webpsuite/small_13x1.webp
 OK. f08db259 test/3pdata/webpsuite/small_1x1.webp
 OK. ae403f6e test/3pdata/webpsuite/small_1x13.webp

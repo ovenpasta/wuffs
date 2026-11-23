@@ -256,7 +256,7 @@ pri func decoder.calculate_loop_filters!() {
                 } else {
                     ilevel >>= 2
                 }
-                ilevel = ilevel.max(no_less_than: (9 - this.filt_sharpness) as base.u32)
+                ilevel = ilevel.min(no_more_than: (9 - this.filt_sharpness) as base.u32)
             }
             if (ilevel < 1) or (0x8000_0000 <= ilevel) {
                 ilevel = 1

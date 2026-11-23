@@ -499,6 +499,13 @@ test_mimic_webp_lossy_decode_image_4002k_24bpp() {
   return do_test_mimic_webp_decode("test/data/harvesters.lossy.webp");
 }
 
+const char*  //
+test_mimic_webp_lossy_decode_sharpness() {
+  CHECK_FOCUS(__func__);
+  return do_test_mimic_webp_decode(
+      "test/data/hippopotamus.sharpness3.lossy.webp");
+}
+
 #endif  // WUFFS_MIMIC
 
 // ---------------- WebP Benches
@@ -735,6 +742,7 @@ proc g_tests[] = {
     test_mimic_webp_lossy_decode_image_77k_24bpp,
     test_mimic_webp_lossy_decode_image_552k_32bpp,
     test_mimic_webp_lossy_decode_image_4002k_24bpp,
+    test_mimic_webp_lossy_decode_sharpness,
 
 #endif  // WUFFS_MIMIC
 
