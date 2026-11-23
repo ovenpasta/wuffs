@@ -127,6 +127,27 @@ initialize_decoder_test_state(wuffs_vp8__decoder* dec) {
 }
 
 const char*  //
+test_wuffs_vp8_decode_clip_m16_p15() {
+  CHECK_FOCUS(__func__);
+
+  wuffs_vp8__decoder dec = {0};
+  CHECK_STATUS("initialize",
+               wuffs_vp8__decoder__initialize(
+                   &dec, sizeof dec, WUFFS_VERSION,
+                   WUFFS_INITIALIZE__LEAVE_INTERNAL_BUFFERS_UNINITIALIZED));
+
+  for (int32_t i = -40; i <= 40; i++) {
+    int32_t want = (i < -16) ? -16 : (i > 15) ? 15 : i;
+    uint32_t have = wuffs_vp8__decoder__clip_m16_p15(&dec, (uint32_t)i);
+    if (have != (uint32_t)want) {
+      RETURN_FAIL("i=%" PRId32 ": have %" PRId32 ", want %" PRId32, i,
+                  (int32_t)have, want);
+    }
+  }
+  return NULL;
+}
+
+const char*  //
 test_wuffs_vp8_decode_inverse_dct_full() {
   CHECK_FOCUS(__func__);
 
@@ -476,6 +497,7 @@ test_wuffs_vp8_decode_predict_y4() {
 
 proc g_tests[] = {
 
+    test_wuffs_vp8_decode_clip_m16_p15,
     test_wuffs_vp8_decode_inverse_dct_full,
     test_wuffs_vp8_decode_inverse_wht,
     test_wuffs_vp8_decode_predict_uv8,

@@ -83979,7 +83979,7 @@ static uint32_t
 wuffs_vp8__decoder__clip_m16_p15(
     const wuffs_vp8__decoder* self,
     uint32_t a_a) {
-  if (((uint32_t)(a_a + 16u)) <= 32u) {
+  if (((uint32_t)(a_a + 16u)) <= 31u) {
     return a_a;
   } else if (a_a < 2147483648u) {
     return 15u;

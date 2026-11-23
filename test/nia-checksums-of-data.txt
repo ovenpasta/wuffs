@@ -141,6 +141,7 @@ OK. 7e6acf01 test/data/hippopotamus.masked-with-muybridge.png
 OK. dcbb225a test/data/hippopotamus.nie
 OK. 57d9a4dd test/data/hippopotamus.pgm
 OK. dcbb225a test/data/hippopotamus.ppm
+OK. 99e18151 test/data/hippopotamus.q0.lossy.webp
 OK. ed4b78fc test/data/hippopotamus.regular.gif
 OK. dcbb225a test/data/hippopotamus.regular.png
 BAD e4c5926b test/data/hippopotamus.regular.truncated.png

@@ -527,7 +527,7 @@ pri func decoder.abs_diff(a: base.u32, b: base.u32) base.u32 {
 }
 
 pri func decoder.clip_m16_p15(a: base.u32) base.u32 {
-    if (args.a ~mod+ 0x10) <= 0x20 {
+    if (args.a ~mod+ 0x10) <= 0x1F {
         return args.a
     } else if args.a < 0x8000_0000 {
         return 0x0F
