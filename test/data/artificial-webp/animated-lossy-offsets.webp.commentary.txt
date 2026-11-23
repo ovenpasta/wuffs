@@ -1,0 +1,18 @@
+animated-lossy-offsets.webp is an animated (VP8X, ANIM and ANMF chunks) WebP
+image with a 38×21 canvas and four lossy frames, some with an alpha channel
+(an ALPH chunk) and some placed at a non-zero offset within the canvas. It was
+made by libwebp 1.5.0's webpmux tool, run from the test/data directory:
+
+webpmux \
+  -frame hippopotamus.masked-with-muybridge.36x8.lossy.webp +100+0+0+0-b \
+  -frame hippopotamus.masked-with-muybridge.36x8.lossy.webp +100+2+12+0-b \
+  -frame peacock.24x19.lossy.webp +100+0+0+0-b \
+  -frame peacock.24x19.lossy.webp +100+14+2+0-b \
+  -loop 0 -bgcolor 255,0,0,0 -o artificial-webp/animated-lossy-offsets.webp
+
+Each frame's duration is 100ms, its blending method is "do not blend" and its
+disposal method is "do not dispose". The frames at (2, 12) and (14, 2) reach
+the canvas' bottom and right edges.
+
+Decoding frame 1 (or 3) should give the same pixels as decoding frame 0 (or 2),
+other than being offset within the canvas.
