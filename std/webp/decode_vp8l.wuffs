@@ -21,10 +21,12 @@ pri func decoder.do_decode_frame_vp8l?(dst: nptr base.pixel_buffer, src: base.io
     var ti             : base.u64
     var tj             : base.u64
 
-    // The VP8L bitstream starts at a byte boundary.
+    // The VP8L bitstream starts at a byte boundary, possibly after another
+    // VP8L bitstream (e.g. another animation frame's).
     this.bits = 0
     this.n_bits = 0
 
+    this.workbuf_offset_for_color_indexing = 0
     this.seen_transform[0] = false
     this.seen_transform[1] = false
     this.seen_transform[2] = false
@@ -433,7 +435,8 @@ pri func decoder.swizzle!(dst: nptr base.pixel_buffer, src: roslice base.u8, ble
     var dst_pixfmt          : base.pixel_format
     var dst_bits_per_pixel  : base.u32[..= 256]
     var dst_bytes_per_pixel : base.u32[..= 32]
-    var dst_bytes_per_row   : base.u64
+    var dst_bytes_per_row0  : base.u64
+    var dst_bytes_per_row1  : base.u64
     var dst_palette         : slice base.u8
     var tab                 : table base.u8
     var src_bytes_per_row   : base.u64
@@ -462,15 +465,24 @@ pri func decoder.swizzle!(dst: nptr base.pixel_buffer, src: roslice base.u8, ble
         return base."#unsupported option"
     }
     dst_bytes_per_pixel = dst_bits_per_pixel / 8
-    dst_bytes_per_row = (this.frame_width * dst_bytes_per_pixel) as base.u64
+    // Each row of the frame goes to dst[dst_bytes_per_row0 ..
+    // dst_bytes_per_row1], within a row of the image.
+    dst_bytes_per_row0 = (this.frame_rect_x0 * dst_bytes_per_pixel) as base.u64
+    dst_bytes_per_row1 = ((this.frame_rect_x0 + this.frame_width) * dst_bytes_per_pixel) as base.u64
     dst_palette = args.dst.palette_or_else(fallback: this.palette[..])
     tab = args.dst.plane(p: 0)
     src_bytes_per_row = (this.frame_width * 4) as base.u64
 
+    y = this.frame_rect_y0
     while src_bytes_per_row <= args.src.length() {
         dst = tab.row_u32(y: y)
-        if dst_bytes_per_row < dst.length() {
-            dst = dst[.. dst_bytes_per_row]
+        if dst_bytes_per_row1 < dst.length() {
+            dst = dst[.. dst_bytes_per_row1]
+        }
+        if dst_bytes_per_row0 < dst.length() {
+            dst = dst[dst_bytes_per_row0 ..]
+        } else {
+            dst = this.util.empty_slice_u8()
         }
 
         this.swizzler.swizzle_interleaved_from_slice!(

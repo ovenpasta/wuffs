@@ -117,7 +117,9 @@ pub struct decoder? implements base.image_decoder(
         frame_end_io_position : base.u64,
 
         // The workbuf_len for VP8X images, calculated during
-        // decode_image_config.
+        // decode_image_config. For an animated image, it covers every frame,
+        // as each frame is no larger than the image and each frame's chunks
+        // are no longer than the RIFF chunk.
         vp8x_workbuf_len : base.u64,
 
         riff_chunk_length : base.u32,
@@ -631,13 +633,14 @@ pri func decoder.do_decode_frame_config?(dst: nptr base.frame_config, src: base.
 // any other chunks, up to and including the next ANMF chunk's header. If there
 // are no more ANMF chunks then it sets this.call_sequence to 0x60.
 pri func decoder.decode_anmf_header?(src: base.io_reader) {
-    var n     : base.u64
-    var c32   : base.u32
-    var x0    : base.u32[..= 0x3FFE]
-    var y0    : base.u32[..= 0x3FFE]
-    var w     : base.u32[..= 0x4000]
-    var h     : base.u32[..= 0x4000]
-    var flags : base.u8
+    var n              : base.u64
+    var c32            : base.u32
+    var x0             : base.u32[..= 0x3FFE]
+    var y0             : base.u32[..= 0x3FFE]
+    var w              : base.u32[..= 0x4000]
+    var h              : base.u32[..= 0x4000]
+    var transform_size : base.u32[..= 0x400_0000]
+    var flags          : base.u8
 
     if this.frame_end_io_position < args.src.position() {
         return "#bad ANMF chunk"
@@ -709,6 +712,13 @@ pri func decoder.decode_anmf_header?(src: base.io_reader) {
     this.frame_width = w
     this.frame_height = h
 
+    // The frame's VP8L chunk (or its ALPH chunk's VP8L bitstream) uses these.
+    transform_size = 4 * ((w + 3) >> 2) * ((h + 3) >> 2)
+    this.workbuf_offset_for_transform[0] = (4 * w * h) + (0 * transform_size)
+    this.workbuf_offset_for_transform[1] = (4 * w * h) + (1 * transform_size)
+    this.workbuf_offset_for_transform[2] = (4 * w * h) + (2 * transform_size)
+    this.workbuf_offset_for_transform[3] = (4 * w * h) + (3 * transform_size)
+
     // There are 705_600000 flicks per second and the WebP frame duration is
     // in milliseconds.
     c32 = args.src.read_u24le_as_u32?()
@@ -750,17 +760,20 @@ pri func decoder.do_decode_frame?(dst: ptr base.pixel_buffer, src: base.io_reade
         return base."@end of data"
     }
 
-    if (this.vp8x_header_flags & 0x02) <> 0 {
-        // TODO: decode animated WebP frames.
-        return "#unsupported WebP file"
-    }
-
     while (this.variant & 0x03) == 0 {
+        // An animation frame's chunks must be within its ANMF chunk.
+        if ((this.vp8x_header_flags & 0x02) <> 0) and
+                ((this.frame_end_io_position ~sat- args.src.position()) < 8) {
+            return "#bad ANMF chunk"
+        }
         this.sub_chunk_type = args.src.read_u32le?()
         this.sub_chunk_length = args.src.read_u32le?()
         this.sub_chunk_has_padding = (this.sub_chunk_length & 1) <> 0
         if this.sub_chunk_length > 0x7FFF_FFFF {
             return "#unsupported WebP file"
+        } else if ((this.vp8x_header_flags & 0x02) <> 0) and
+                ((this.frame_end_io_position ~sat- args.src.position()) < (this.sub_chunk_length as base.u64)) {
+            return "#bad ANMF chunk"
         }
 
         if this.sub_chunk_type == 'ICCP'le {
@@ -798,7 +811,8 @@ pri func decoder.do_decode_frame?(dst: ptr base.pixel_buffer, src: base.io_reade
 
         } else if this.sub_chunk_type == 'VP8 'le {
             // this.vp8 may have already decoded this chunk (and restart_frame
-            // was then called), so reset it and set its quirks again.
+            // was then called) or another animation frame's VP8 chunk, so
+            // reset it and set its quirks again.
             this.vp8.reset!()
             this.vp8.set_quirk!(
                     key: vp8.QUIRK_WIDTH_AND_HEIGHT,
@@ -811,6 +825,9 @@ pri func decoder.do_decode_frame?(dst: ptr base.pixel_buffer, src: base.io_reade
             this.vp8.set_quirk!(
                     key: base.QUIRK_SOURCE_LENGTH,
                     value: ((this.sub_chunk_length as base.u64) << 1) | 1)
+            this.vp8.set_quirk!(
+                    key: vp8.QUIRK_DST_X_AND_Y,
+                    value: ((this.frame_rect_x0 as base.u64) | ((this.frame_rect_y0 as base.u64) << 32)))
             this.variant = 0x81
             break
 
@@ -868,7 +885,11 @@ pri func decoder.do_decode_frame?(dst: ptr base.pixel_buffer, src: base.io_reade
     }
 
     this.num_decoded_frames_value ~sat+= 1
-    this.call_sequence = 0x60
+    if (this.vp8x_header_flags & 0x02) <> 0 {
+        this.call_sequence = 0x20
+    } else {
+        this.call_sequence = 0x60
+    }
 }
 
 pub func decoder.frame_dirty_rect() base.rect_ie_u32 {
@@ -876,10 +897,10 @@ pub func decoder.frame_dirty_rect() base.rect_ie_u32 {
         return this.vp8.frame_dirty_rect()
     }
     return this.util.make_rect_ie_u32(
-            min_incl_x: 0,
-            min_incl_y: 0,
-            max_excl_x: this.width,
-            max_excl_y: this.height)
+            min_incl_x: this.frame_rect_x0,
+            min_incl_y: this.frame_rect_y0,
+            max_excl_x: this.frame_rect_x0 + this.frame_width,
+            max_excl_y: this.frame_rect_y0 + this.frame_height)
 }
 
 pub func decoder.num_animation_loops() base.u32 {

@@ -714,6 +714,111 @@ test_wuffs_webp_decode_restart_frame() {
 }
 
 const char*  //
+test_wuffs_webp_decode_restart_frame_animated() {
+  CHECK_FOCUS(__func__);
+
+  const char* filenames[] = {
+      "test/data/animated-red-blue.webp",
+      "test/data/artificial-webp/animated-lossy-offsets.webp",
+  };
+
+  for (size_t tc = 0; tc < WUFFS_TESTLIB_ARRAY_SIZE(filenames); tc++) {
+    wuffs_base__io_buffer src = ((wuffs_base__io_buffer){
+        .data = g_src_slice_u8,
+    });
+    CHECK_STRING(read_file(&src, filenames[tc]));
+
+    wuffs_webp__decoder* dec = &g_webp_decoder;
+    CHECK_STATUS("initialize",
+                 wuffs_webp__decoder__initialize(
+                     dec, sizeof *dec, WUFFS_VERSION,
+                     WUFFS_INITIALIZE__LEAVE_INTERNAL_BUFFERS_UNINITIALIZED));
+
+    wuffs_base__image_config ic = ((wuffs_base__image_config){});
+    CHECK_STATUS("decode_image_config",
+                 wuffs_webp__decoder__decode_image_config(dec, &ic, &src));
+    wuffs_base__pixel_config__set(&ic.pixcfg,
+                                  WUFFS_BASE__PIXEL_FORMAT__BGRA_NONPREMUL,
+                                  WUFFS_BASE__PIXEL_SUBSAMPLING__NONE,
+                                  wuffs_base__pixel_config__width(&ic.pixcfg),
+                                  wuffs_base__pixel_config__height(&ic.pixcfg));
+    uint64_t n = wuffs_base__pixel_config__pixbuf_len(&ic.pixcfg);
+    if (n > g_pixel_slice_u8.len) {
+      RETURN_FAIL("tc=%zu: pixel buffer is too small", tc);
+    }
+
+    wuffs_base__pixel_buffer pb = ((wuffs_base__pixel_buffer){});
+    CHECK_STATUS("set_from_slice", wuffs_base__pixel_buffer__set_from_slice(
+                                       &pb, &ic.pixcfg, g_pixel_slice_u8));
+
+    wuffs_base__range_ii_u64 r = wuffs_webp__decoder__workbuf_len(dec);
+    if (wuffs_base__range_ii_u64__is_empty(&r) ||
+        (r.max_incl > g_work_slice_u8.len)) {
+      RETURN_FAIL("tc=%zu: workbuf_len: bad range", tc);
+    }
+    wuffs_base__slice_u8 workbuf =
+        wuffs_base__make_slice_u8(g_work_slice_u8.ptr, r.max_incl);
+
+    // Decode the frames (each to an all-zeroes pixel buffer) in the usual
+    // order, then (after restart_frame calls) in reverse order.
+    uint64_t io_positions[4] = {0};
+    uint64_t hashes[4] = {0};
+    for (int pass = 0; pass < 2; pass++) {
+      for (int j = 0; j < 4; j++) {
+        uint64_t i = pass ? (3 - j) : j;
+        if (pass) {
+          CHECK_STATUS("restart_frame", wuffs_webp__decoder__restart_frame(
+                                            dec, i, io_positions[i]));
+          src.meta.ri = io_positions[i];
+        }
+
+        wuffs_base__frame_config fc = ((wuffs_base__frame_config){});
+        CHECK_STATUS("decode_frame_config",
+                     wuffs_webp__decoder__decode_frame_config(dec, &fc, &src));
+        if (pass == 0) {
+          io_positions[i] = wuffs_base__frame_config__io_position(&fc);
+        } else if (io_positions[i] !=
+                   wuffs_base__frame_config__io_position(&fc)) {
+          RETURN_FAIL("tc=%zu, i=%" PRIu64 ": io_position: have %" PRIu64
+                      ", want %" PRIu64,
+                      tc, i, wuffs_base__frame_config__io_position(&fc),
+                      io_positions[i]);
+        }
+        if (wuffs_base__frame_config__index(&fc) != i) {
+          RETURN_FAIL("tc=%zu, i=%" PRIu64 ": index: have %" PRIu64, tc, i,
+                      wuffs_base__frame_config__index(&fc));
+        }
+
+        memset(g_pixel_slice_u8.ptr, 0, n);
+        CHECK_STATUS(
+            "decode_frame",
+            wuffs_webp__decoder__decode_frame(
+                dec, &pb, &src, WUFFS_BASE__PIXEL_BLEND__SRC, workbuf, NULL));
+        if (wuffs_webp__decoder__num_decoded_frames(dec) != (i + 1)) {
+          RETURN_FAIL("tc=%zu, i=%" PRIu64
+                      ": num_decoded_frames: have %" PRIu64,
+                      tc, i, wuffs_webp__decoder__num_decoded_frames(dec));
+        }
+
+        // FNV-1a.
+        uint64_t hash = 0xCBF29CE484222325ul;
+        for (uint64_t k = 0; k < n; k++) {
+          hash ^= g_pixel_slice_u8.ptr[k];
+          hash *= 0x100000001B3ul;
+        }
+        if (pass == 0) {
+          hashes[i] = hash;
+        } else if (hashes[i] != hash) {
+          RETURN_FAIL("tc=%zu, i=%" PRIu64 ": pixels differ", tc, i);
+        }
+      }
+    }
+  }
+
+  return NULL;
+}
+
+const char*  //
 test_wuffs_webp_decode_riff_ends_in_chunk_header() {
   CHECK_FOCUS(__func__);
 
@@ -757,6 +862,122 @@ test_wuffs_webp_decode_riff_ends_in_chunk_header() {
       }
     }
   }
+  return NULL;
+}
+
+const char*  //
+test_wuffs_webp_decode_animated_offsets() {
+  CHECK_FOCUS(__func__);
+  wuffs_webp__decoder* dec = &g_webp_decoder;
+  CHECK_STATUS("initialize",
+               wuffs_webp__decoder__initialize(
+                   dec, sizeof *dec, WUFFS_VERSION,
+                   WUFFS_INITIALIZE__LEAVE_INTERNAL_BUFFERS_UNINITIALIZED));
+
+  wuffs_base__io_buffer src = ((wuffs_base__io_buffer){
+      .data = g_src_slice_u8,
+  });
+  CHECK_STRING(
+      read_file(&src, "test/data/artificial-webp/animated-lossy-offsets.webp"));
+
+  wuffs_base__image_config ic = ((wuffs_base__image_config){});
+  CHECK_STATUS("decode_image_config",
+               wuffs_webp__decoder__decode_image_config(dec, &ic, &src));
+  const uint32_t w = 38;
+  const uint32_t h = 21;
+  if ((wuffs_base__pixel_config__width(&ic.pixcfg) != w) ||
+      (wuffs_base__pixel_config__height(&ic.pixcfg) != h)) {
+    RETURN_FAIL("dimensions: have %" PRIu32 "x%" PRIu32 ", want 38x21",
+                wuffs_base__pixel_config__width(&ic.pixcfg),
+                wuffs_base__pixel_config__height(&ic.pixcfg));
+  }
+  wuffs_base__pixel_config__set(&ic.pixcfg,
+                                WUFFS_BASE__PIXEL_FORMAT__BGRA_NONPREMUL,
+                                WUFFS_BASE__PIXEL_SUBSAMPLING__NONE, w, h);
+
+  wuffs_base__range_ii_u64 r = wuffs_webp__decoder__workbuf_len(dec);
+  if (wuffs_base__range_ii_u64__is_empty(&r) ||
+      (r.max_incl > g_work_slice_u8.len)) {
+    RETURN_FAIL("workbuf_len: bad range");
+  }
+  wuffs_base__slice_u8 workbuf =
+      wuffs_base__make_slice_u8(g_work_slice_u8.ptr, r.max_incl);
+
+  // Decode each frame to its own pixel buffer, initially all zeroes.
+  const size_t n = 4 * w * h;
+  if ((4 * n) > g_pixel_slice_u8.len) {
+    RETURN_FAIL("pixel buffer is too small");
+  }
+  memset(g_pixel_slice_u8.ptr, 0, 4 * n);
+
+  static const uint32_t want_x0s[4] = {0, 2, 0, 14};
+  static const uint32_t want_y0s[4] = {0, 12, 0, 2};
+  static const uint32_t want_widths[4] = {36, 36, 24, 24};
+  static const uint32_t want_heights[4] = {8, 8, 19, 19};
+
+  for (int i = 0; i < 4; i++) {
+    wuffs_base__frame_config fc = ((wuffs_base__frame_config){});
+    CHECK_STATUS("decode_frame_config",
+                 wuffs_webp__decoder__decode_frame_config(dec, &fc, &src));
+    wuffs_base__rect_ie_u32 b = wuffs_base__frame_config__bounds(&fc);
+    if ((b.min_incl_x != want_x0s[i]) || (b.min_incl_y != want_y0s[i]) ||
+        (wuffs_base__rect_ie_u32__width(&b) != want_widths[i]) ||
+        (wuffs_base__rect_ie_u32__height(&b) != want_heights[i])) {
+      RETURN_FAIL("bounds #%d: have (%" PRIu32 ", %" PRIu32 ")-(%" PRIu32
+                  ", %" PRIu32 ")",
+                  i, b.min_incl_x, b.min_incl_y, b.max_excl_x, b.max_excl_y);
+    }
+
+    wuffs_base__pixel_buffer pb = ((wuffs_base__pixel_buffer){});
+    CHECK_STATUS("set_from_slice", wuffs_base__pixel_buffer__set_from_slice(
+                                       &pb, &ic.pixcfg,
+                                       wuffs_base__make_slice_u8(
+                                           g_pixel_slice_u8.ptr + (i * n), n)));
+    CHECK_STATUS(
+        "decode_frame",
+        wuffs_webp__decoder__decode_frame(
+            dec, &pb, &src, WUFFS_BASE__PIXEL_BLEND__SRC, workbuf, NULL));
+
+    wuffs_base__rect_ie_u32 dirty = wuffs_webp__decoder__frame_dirty_rect(dec);
+    if (!wuffs_base__rect_ie_u32__equals(&dirty, b)) {
+      RETURN_FAIL("frame_dirty_rect #%d: have (%" PRIu32 ", %" PRIu32
+                  ")-(%" PRIu32 ", %" PRIu32 ")",
+                  i, dirty.min_incl_x, dirty.min_incl_y, dirty.max_excl_x,
+                  dirty.max_excl_y);
+    }
+  }
+
+  wuffs_base__status status =
+      wuffs_webp__decoder__decode_frame_config(dec, NULL, &src);
+  if (status.repr != wuffs_base__note__end_of_data) {
+    RETURN_FAIL("decode_frame_config: have \"%s\", want \"%s\"", status.repr,
+                wuffs_base__note__end_of_data);
+  }
+
+  // Frames 1 and 3 should match frames 0 and 2, offset. Elsewhere (outside of
+  // each frame's bounds), the pixels should be untouched: still zero.
+  for (int i = 0; i < 4; i++) {
+    const uint8_t* have = g_pixel_slice_u8.ptr + (i * n);
+    const uint8_t* want = g_pixel_slice_u8.ptr + ((i & 2) * n);
+    for (uint32_t y = 0; y < h; y++) {
+      for (uint32_t x = 0; x < w; x++) {
+        uint32_t have_pixel =
+            wuffs_base__peek_u32le__no_bounds_check(have + (4 * ((y * w) + x)));
+        uint32_t want_pixel = 0;
+        if ((want_x0s[i] <= x) && (x < (want_x0s[i] + want_widths[i])) &&
+            (want_y0s[i] <= y) && (y < (want_y0s[i] + want_heights[i]))) {
+          want_pixel = wuffs_base__peek_u32le__no_bounds_check(
+              want + (4 * (((y - want_y0s[i]) * w) + (x - want_x0s[i]))));
+        }
+        if (have_pixel != want_pixel) {
+          RETURN_FAIL("frame #%d, x=%" PRIu32 ", y=%" PRIu32
+                      ": have 0x%08" PRIX32 ", want 0x%08" PRIX32,
+                      i, x, y, have_pixel, want_pixel);
+        }
+      }
+    }
+  }
+
   return NULL;
 }
 
@@ -1302,6 +1523,7 @@ bench_mimic_webp_lossy_decode_image_4002k_24bpp() {
 
 proc g_tests[] = {
 
+    test_wuffs_webp_decode_animated_offsets,
     test_wuffs_webp_decode_filter_alph,
     test_wuffs_webp_decode_frame_config,
     test_wuffs_webp_decode_inconsistent_width_and_height,
@@ -1314,6 +1536,7 @@ proc g_tests[] = {
     test_wuffs_webp_decode_many_small_reads_uncompressed_alph,
     test_wuffs_webp_decode_minimum_workbuf_len,
     test_wuffs_webp_decode_restart_frame,
+    test_wuffs_webp_decode_restart_frame_animated,
     test_wuffs_webp_decode_riff_ends_in_chunk_header,
 
 #ifdef WUFFS_MIMIC
