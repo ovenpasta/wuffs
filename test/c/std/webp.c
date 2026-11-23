@@ -88,6 +88,191 @@ wuffs_webp_decode(uint64_t* n_bytes_out,
 // --------
 
 const char*  //
+test_wuffs_webp_decode_frame_config() {
+  CHECK_FOCUS(__func__);
+
+  static const wuffs_base__rect_ie_u32 hippopotamus_want_bounds[] = {
+      {0, 0, 36, 28},
+  };
+  static const uint64_t hippopotamus_want_io_ps[] = {
+      0x001E,
+  };
+  static const uint64_t hippopotamus_want_durations[] = {
+      0,
+  };
+  static const bool hippopotamus_want_overwrites[] = {
+      false,
+  };
+  static const wuffs_base__rect_ie_u32 animated_red_blue_want_bounds[] = {
+      {0, 0, 64, 48},
+      {14, 30, 52, 40},
+      {14, 0, 64, 40},
+      {14, 0, 64, 40},
+  };
+  static const uint64_t animated_red_blue_want_io_ps[] = {
+      0x002C,
+      0x011C,
+      0x017A,
+      0x0252,
+  };
+  static const uint64_t animated_red_blue_want_durations[] = {
+      100 * WUFFS_BASE__FLICKS_PER_MILLISECOND,
+      200 * WUFFS_BASE__FLICKS_PER_MILLISECOND,
+      300 * WUFFS_BASE__FLICKS_PER_MILLISECOND,
+      400 * WUFFS_BASE__FLICKS_PER_MILLISECOND,
+  };
+  static const bool animated_red_blue_want_overwrites[] = {
+      true,
+      false,
+      false,
+      false,
+  };
+
+  struct {
+    const char* filename;
+    uint64_t want_count;
+    uint32_t want_num_animation_loops;
+    const wuffs_base__rect_ie_u32* want_bounds;
+    const uint64_t* want_io_ps;
+    const uint64_t* want_durations;
+    const bool* want_overwrites;
+  } test_cases[] = {
+      {
+          .filename =
+              "test/data/hippopotamus.masked-with-muybridge.lossless.webp",
+          .want_count = WUFFS_TESTLIB_ARRAY_SIZE(hippopotamus_want_bounds),
+          .want_num_animation_loops = 0,
+          .want_bounds = hippopotamus_want_bounds,
+          .want_io_ps = hippopotamus_want_io_ps,
+          .want_durations = hippopotamus_want_durations,
+          .want_overwrites = hippopotamus_want_overwrites,
+      },
+      {
+          .filename = "test/data/animated-red-blue.webp",
+          .want_count = WUFFS_TESTLIB_ARRAY_SIZE(animated_red_blue_want_bounds),
+          .want_num_animation_loops = 3,
+          .want_bounds = animated_red_blue_want_bounds,
+          .want_io_ps = animated_red_blue_want_io_ps,
+          .want_durations = animated_red_blue_want_durations,
+          .want_overwrites = animated_red_blue_want_overwrites,
+      },
+  };
+
+  for (size_t tc = 0; tc < WUFFS_TESTLIB_ARRAY_SIZE(test_cases); tc++) {
+    wuffs_webp__decoder* dec = &g_webp_decoder;
+    CHECK_STATUS("initialize",
+                 wuffs_webp__decoder__initialize(
+                     dec, sizeof *dec, WUFFS_VERSION,
+                     WUFFS_INITIALIZE__LEAVE_INTERNAL_BUFFERS_UNINITIALIZED));
+    wuffs_base__frame_config fc = ((wuffs_base__frame_config){});
+    wuffs_base__io_buffer src = ((wuffs_base__io_buffer){
+        .data = g_src_slice_u8,
+    });
+    CHECK_STRING(read_file(&src, test_cases[tc].filename));
+
+    uint64_t have_count = 0;
+    while (true) {
+      wuffs_base__status status =
+          wuffs_webp__decoder__decode_frame_config(dec, &fc, &src);
+      if (status.repr == wuffs_base__note__end_of_data) {
+        break;
+      } else if (!wuffs_base__status__is_ok(&status)) {
+        RETURN_FAIL("decode_frame_config tc=%zu #%" PRIu64 ": %s", tc,
+                    have_count, status.repr);
+      }
+
+      if (have_count < test_cases[tc].want_count) {
+        wuffs_base__rect_ie_u32 have_bounds =
+            wuffs_base__frame_config__bounds(&fc);
+        const wuffs_base__rect_ie_u32* want_bounds =
+            &test_cases[tc].want_bounds[have_count];
+        if (!wuffs_base__rect_ie_u32__equals(&have_bounds, *want_bounds)) {
+          RETURN_FAIL("bounds tc=%zu #%" PRIu64 ": have (%" PRIu32 ", %" PRIu32
+                      ")-(%" PRIu32 ", %" PRIu32 "), want (%" PRIu32
+                      ", %" PRIu32 ")-(%" PRIu32 ", %" PRIu32 ")",
+                      tc, have_count, have_bounds.min_incl_x,
+                      have_bounds.min_incl_y, have_bounds.max_excl_x,
+                      have_bounds.max_excl_y, want_bounds->min_incl_x,
+                      want_bounds->min_incl_y, want_bounds->max_excl_x,
+                      want_bounds->max_excl_y);
+        }
+
+        uint64_t have_io_p = wuffs_base__frame_config__io_position(&fc);
+        if (have_io_p != test_cases[tc].want_io_ps[have_count]) {
+          RETURN_FAIL("io_position tc=%zu #%" PRIu64 ": have %" PRIu64
+                      ", want %" PRIu64,
+                      tc, have_count, have_io_p,
+                      test_cases[tc].want_io_ps[have_count]);
+        }
+
+        uint64_t have_duration =
+            (uint64_t)wuffs_base__frame_config__duration(&fc);
+        if (have_duration != test_cases[tc].want_durations[have_count]) {
+          RETURN_FAIL("duration tc=%zu #%" PRIu64 ": have %" PRIu64
+                      ", want %" PRIu64,
+                      tc, have_count, have_duration,
+                      test_cases[tc].want_durations[have_count]);
+        }
+
+        bool have_overwrite =
+            wuffs_base__frame_config__overwrite_instead_of_blend(&fc);
+        if (have_overwrite != test_cases[tc].want_overwrites[have_count]) {
+          RETURN_FAIL("overwrite_instead_of_blend tc=%zu #%" PRIu64
+                      ": have %d, want %d",
+                      tc, have_count, (int)have_overwrite,
+                      (int)test_cases[tc].want_overwrites[have_count]);
+        }
+
+        if (wuffs_base__frame_config__disposal(&fc) !=
+            WUFFS_BASE__ANIMATION_DISPOSAL__NONE) {
+          RETURN_FAIL("disposal tc=%zu #%" PRIu64 ": have %d, want 0", tc,
+                      have_count, (int)wuffs_base__frame_config__disposal(&fc));
+        }
+
+        // The ANIM chunk's background color (opaque black in
+        // animated-red-blue.webp) is only a hint.
+        if (wuffs_base__frame_config__background_color(&fc) != 0) {
+          RETURN_FAIL(
+              "background_color tc=%zu #%" PRIu64 ": have 0x%08" PRIX32
+              ", want 0",
+              tc, have_count, wuffs_base__frame_config__background_color(&fc));
+        }
+
+        uint64_t have_index = wuffs_base__frame_config__index(&fc);
+        if (have_index != have_count) {
+          RETURN_FAIL("index tc=%zu #%" PRIu64 ": have %" PRIu64, tc,
+                      have_count, have_index);
+        }
+      }
+
+      have_count++;
+    }
+
+    if (have_count != test_cases[tc].want_count) {
+      RETURN_FAIL("count tc=%zu: have %" PRIu64 ", want %" PRIu64, tc,
+                  have_count, test_cases[tc].want_count);
+    }
+    if (wuffs_webp__decoder__num_decoded_frame_configs(dec) != have_count) {
+      RETURN_FAIL(
+          "num_decoded_frame_configs tc=%zu: have %" PRIu64 ", want %" PRIu64,
+          tc, wuffs_webp__decoder__num_decoded_frame_configs(dec), have_count);
+    }
+    // Skipping (not decoding) a frame still counts as decoding it.
+    if (wuffs_webp__decoder__num_decoded_frames(dec) != have_count) {
+      RETURN_FAIL("num_decoded_frames tc=%zu: have %" PRIu64 ", want %" PRIu64,
+                  tc, wuffs_webp__decoder__num_decoded_frames(dec), have_count);
+    }
+    uint32_t have_loops = wuffs_webp__decoder__num_animation_loops(dec);
+    if (have_loops != test_cases[tc].want_num_animation_loops) {
+      RETURN_FAIL("num_animation_loops tc=%zu: have %" PRIu32 ", want %" PRIu32,
+                  tc, have_loops, test_cases[tc].want_num_animation_loops);
+    }
+  }
+
+  return NULL;
+}
+
+const char*  //
 test_wuffs_webp_decode_inconsistent_width_and_height() {
   CHECK_FOCUS(__func__);
   wuffs_webp__decoder* dec = &g_webp_decoder;
@@ -525,6 +710,53 @@ test_wuffs_webp_decode_restart_frame() {
     }
   }
 
+  return NULL;
+}
+
+const char*  //
+test_wuffs_webp_decode_riff_ends_in_chunk_header() {
+  CHECK_FOCUS(__func__);
+
+  // animated-red-blue.webp's first ANMF chunk header starts at offset 44, so
+  // a RIFF chunk length of 38 (or 40 or 42) makes the RIFF chunk end 2 (or 4
+  // or 6) bytes into it. The file has more bytes after that, but they're
+  // outside the RIFF chunk.
+  for (uint32_t riff_chunk_length = 38; riff_chunk_length <= 42;
+       riff_chunk_length += 2) {
+    for (int incremental = 0; incremental < 2; incremental++) {
+      wuffs_base__io_buffer src = ((wuffs_base__io_buffer){
+          .data = g_src_slice_u8,
+      });
+      CHECK_STRING(read_file(&src, "test/data/animated-red-blue.webp"));
+      wuffs_base__poke_u32le__no_bounds_check(src.data.ptr + 4,
+                                              riff_chunk_length);
+      const size_t full_wi = src.meta.wi;
+
+      wuffs_webp__decoder* dec = &g_webp_decoder;
+      CHECK_STATUS("initialize",
+                   wuffs_webp__decoder__initialize(
+                       dec, sizeof *dec, WUFFS_VERSION,
+                       WUFFS_INITIALIZE__LEAVE_INTERNAL_BUFFERS_UNINITIALIZED));
+
+      // If incremental, make the source bytes available one at a time.
+      wuffs_base__status status = wuffs_base__make_status(NULL);
+      for (size_t wi = 1;; wi++) {
+        src.meta.wi = (incremental && (wi < full_wi)) ? wi : full_wi;
+        src.meta.closed = src.meta.wi == full_wi;
+        status = wuffs_webp__decoder__decode_image_config(dec, NULL, &src);
+        if ((status.repr != wuffs_base__suspension__short_read) ||
+            src.meta.closed) {
+          break;
+        }
+      }
+      if (status.repr != wuffs_webp__error__short_chunk) {
+        RETURN_FAIL("riff_chunk_length=%" PRIu32
+                    ", incremental=%d: have \"%s\", want \"%s\"",
+                    riff_chunk_length, incremental, status.repr,
+                    wuffs_webp__error__short_chunk);
+      }
+    }
+  }
   return NULL;
 }
 
@@ -1071,6 +1303,7 @@ bench_mimic_webp_lossy_decode_image_4002k_24bpp() {
 proc g_tests[] = {
 
     test_wuffs_webp_decode_filter_alph,
+    test_wuffs_webp_decode_frame_config,
     test_wuffs_webp_decode_inconsistent_width_and_height,
     test_wuffs_webp_decode_interface_lossless,
     test_wuffs_webp_decode_interface_lossy,
@@ -1081,6 +1314,7 @@ proc g_tests[] = {
     test_wuffs_webp_decode_many_small_reads_uncompressed_alph,
     test_wuffs_webp_decode_minimum_workbuf_len,
     test_wuffs_webp_decode_restart_frame,
+    test_wuffs_webp_decode_riff_ends_in_chunk_header,
 
 #ifdef WUFFS_MIMIC
 

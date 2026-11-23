@@ -11,6 +11,8 @@
 use "std/vp8"
 
 pub status "#bad ALPH+VP8L combination"
+pub status "#bad ANIM chunk"
+pub status "#bad ANMF chunk"
 pub status "#bad Huffman code (over-subscribed)"
 pub status "#bad Huffman code (under-subscribed)"
 pub status "#bad Huffman code"
@@ -58,6 +60,11 @@ pub struct decoder? implements base.image_decoder(
         // 0x08 = VP8X and seen VP8X, ICCP   chunks
         // 0x10 = VP8X and seen VP8X, ICCP†, ANIM   chunks
         // 0x20 = VP8X and seen VP8X, ICCP†, ANIM†, ANMF   chunks
+        //
+        // For an animated image, the ANMF chunk's sub-chunks (ALPH, VP8 or
+        // VP8L) take the variant from 0x20 to 0x40, 0x81 or 0x82, for each
+        // ANMF chunk (each animation frame).
+        //
         // 0x40 = VP8X and seen VP8X, ICCP†, ANIM†, ANMF†, ALPH   chunks
         // 0x81 = VP8X and seen VP8X, ICCP†, ANIM†, ANMF†, ALPH†, VP8  chunks
         // 0x82 = VP8X and seen VP8X, ICCP†, ANIM†, ANMF†,        VP8L chunks
@@ -90,6 +97,24 @@ pub struct decoder? implements base.image_decoder(
         vp8x_alph_flags : base.u8,
 
         frame_config_io_position : base.u64,
+
+        // The frame's top-left corner, relative to the image. It is zero for a
+        // still image.
+        frame_rect_x0 : base.u32[..= 0x3FFE],
+        frame_rect_y0 : base.u32[..= 0x3FFE],
+
+        frame_duration                   : base.u64[..= 0xFF_FFFF * 705600],
+        frame_disposal                   : base.u8,
+        frame_overwrite_instead_of_blend : base.bool,
+
+        num_animation_loops_value       : base.u32,
+        num_decoded_frame_configs_value : base.u64,
+        num_decoded_frames_value        : base.u64,
+
+        // The I/O positions of the end of the RIFF chunk and, for an animated
+        // image, of the end of the current ANMF chunk.
+        riff_end_io_position  : base.u64,
+        frame_end_io_position : base.u64,
 
         // The workbuf_len for VP8X images, calculated during
         // decode_image_config.
@@ -234,6 +259,7 @@ pri func decoder.do_decode_image_config?(dst: nptr base.image_config, src: base.
         return "#bad header"
     }
     this.rcl_remaining = this.riff_chunk_length
+    this.riff_end_io_position = args.src.position() ~sat+ (this.riff_chunk_length as base.u64)
 
     while true {
         io_limit (io: args.src, limit: this.rcl_remaining as base.u64) {
@@ -254,6 +280,7 @@ pri func decoder.do_decode_image_config?(dst: nptr base.image_config, src: base.
     }
 
     this.frame_config_io_position = args.src.position()
+    this.frame_end_io_position = this.frame_config_io_position
     this.frame_sub_chunk_length = this.sub_chunk_length
 
     if (this.variant <> 0x01) and (args.dst <> nullptr) {
@@ -325,6 +352,77 @@ pri func decoder.do_decode_image_config_limited?(dst: nptr base.image_config, sr
             return "#short chunk"
         }
         yield? status
+    }
+
+    if (this.vp8x_header_flags & 0x02) <> 0 {
+        this.do_decode_image_config_limited_anim?(src: args.src)
+    }
+}
+
+// do_decode_image_config_limited_anim processes the chunks after an animated
+// image's VP8X chunk, up to (but not including) the first ANMF chunk.
+pri func decoder.do_decode_image_config_limited_anim?(src: base.io_reader) {
+    var c64        : base.u64
+    var chunk_type : base.u32
+
+    while true {
+        if (this.riff_end_io_position ~sat- args.src.position()) < 8 {
+            return "#short chunk"
+        } else if args.src.length() < 8 {
+            yield? base."$short read"
+            continue
+        }
+        c64 = args.src.peek_u64le()
+        chunk_type = (c64 & 0xFFFF_FFFF) as base.u32
+        if chunk_type == 'ANMF'le {
+            break
+        }
+        this.sub_chunk_length = (c64 >> 32) as base.u32
+        this.sub_chunk_has_padding = (this.sub_chunk_length & 1) <> 0
+        args.src.skip_u32_fast!(actual: 8, worst_case: 8)
+
+        if chunk_type == 'ICCP'le {
+            if this.variant > 0x04 {
+                return "#bad chunk order"
+            } else if (this.vp8x_header_flags & 0x20) == 0 {
+                return "#bad VP8X chunk"
+            }
+            this.variant = 0x08
+
+        } else if chunk_type == 'ANIM'le {
+            if this.variant > 0x08 {
+                return "#bad chunk order"
+            } else if this.sub_chunk_length < 6 {
+                return "#bad ANIM chunk"
+            }
+            this.variant = 0x10
+            this.sub_chunk_length -= 6
+
+            // Skip the background color. Like std/gif without its
+            // QUIRK_HONOR_BACKGROUND_COLOR, we report a transparent black
+            // background. RFC 9649 says that viewers SHOULD treat the ANIM
+            // chunk's background color as a hint, and libwebp's
+            // WebPAnimDecoder ignores it too.
+            //
+            // TODO: add a quirk to honor the background color.
+            args.src.skip_u32?(n: 4)
+            this.num_animation_loops_value = args.src.read_u16le_as_u32?()
+
+        } else if (chunk_type == 'ALPH'le) or
+                (chunk_type == 'VP8 'le) or
+                (chunk_type == 'VP8L'le) or
+                (chunk_type == 'VP8X'le) {
+            return "#bad chunk order"
+        }
+
+        args.src.skip_u32?(n: this.sub_chunk_length)
+        if this.sub_chunk_has_padding {
+            args.src.skip_u32?(n: 1)
+        }
+    }
+
+    if this.variant <> 0x10 {
+        return "#bad chunk order"
     }
 }
 
@@ -492,28 +590,140 @@ pri func decoder.do_decode_frame_config?(dst: nptr base.frame_config, src: base.
             return base."#bad restart"
         }
     } else if this.call_sequence == 0x40 {
-        this.call_sequence = 0x60
-        return base."@end of data"
+        // Skip the frame, without decoding it.
+        this.num_decoded_frames_value ~sat+= 1
+        if (this.vp8x_header_flags & 0x02) == 0 {
+            this.call_sequence = 0x60
+            return base."@end of data"
+        }
+        this.call_sequence = 0x20
     } else {
         return base."@end of data"
     }
 
+    if (this.vp8x_header_flags & 0x02) <> 0 {
+        this.decode_anmf_header?(src: args.src)
+        if this.call_sequence >= 0x60 {
+            return base."@end of data"
+        }
+    }
+
     if (this.variant <> 0x01) and (args.dst <> nullptr) {
         args.dst.set!(bounds: this.util.make_rect_ie_u32(
-                min_incl_x: 0,
-                min_incl_y: 0,
-                max_excl_x: this.width,
-                max_excl_y: this.height),
-                duration: 0,
-                index: 0,
+                min_incl_x: this.frame_rect_x0,
+                min_incl_y: this.frame_rect_y0,
+                max_excl_x: this.frame_rect_x0 + this.frame_width,
+                max_excl_y: this.frame_rect_y0 + this.frame_height),
+                duration: this.frame_duration,
+                index: this.num_decoded_frame_configs_value,
                 io_position: this.frame_config_io_position,
-                disposal: 0,
+                disposal: this.frame_disposal,
                 opaque_within_bounds: false,
-                overwrite_instead_of_blend: false,
+                overwrite_instead_of_blend: this.frame_overwrite_instead_of_blend,
                 background_color: 0x0000_0000)
     }
 
+    this.num_decoded_frame_configs_value ~sat+= 1
     this.call_sequence = 0x40
+}
+
+// decode_anmf_header skips the rest of the previous ANMF chunk (if any) and
+// any other chunks, up to and including the next ANMF chunk's header. If there
+// are no more ANMF chunks then it sets this.call_sequence to 0x60.
+pri func decoder.decode_anmf_header?(src: base.io_reader) {
+    var n     : base.u64
+    var c32   : base.u32
+    var x0    : base.u32[..= 0x3FFE]
+    var y0    : base.u32[..= 0x3FFE]
+    var w     : base.u32[..= 0x4000]
+    var h     : base.u32[..= 0x4000]
+    var flags : base.u8
+
+    if this.frame_end_io_position < args.src.position() {
+        return "#bad ANMF chunk"
+    }
+    args.src.skip?(n: this.frame_end_io_position ~sat- args.src.position())
+
+    while true {
+        n = this.riff_end_io_position ~sat- args.src.position()
+        if n <= 0 {
+            this.call_sequence = 0x60
+            return ok
+        } else if n < 8 {
+            return "#short chunk"
+        }
+        this.sub_chunk_type = args.src.read_u32le?()
+        this.sub_chunk_length = args.src.read_u32le?()
+        n = (this.sub_chunk_length as base.u64) + ((this.sub_chunk_length & 1) as base.u64)
+        if n > (this.riff_end_io_position ~sat- args.src.position()) {
+            return "#short chunk"
+        }
+
+        if this.sub_chunk_type == 'ANMF'le {
+            break
+        } else if (this.sub_chunk_type == 'ALPH'le) or
+                (this.sub_chunk_type == 'VP8 'le) or
+                (this.sub_chunk_type == 'VP8L'le) or
+                (this.sub_chunk_type == 'VP8X'le) {
+            return "#bad chunk order"
+        }
+        args.src.skip?(n: n)
+    }
+
+    if this.sub_chunk_length < 16 {
+        return "#bad ANMF chunk"
+    }
+    this.frame_config_io_position = args.src.position() ~mod- 8
+    this.frame_end_io_position = args.src.position() ~mod+ n
+
+    // Parse the ANMF chunk's header into local variables, and only assign to
+    // this.frame_etc fields after it's valid.
+    c32 = args.src.read_u24le_as_u32?()
+    if c32 >= 0x2000 {
+        return "#bad ANMF chunk"
+    }
+    x0 = 2 * c32
+    c32 = args.src.read_u24le_as_u32?()
+    if c32 >= 0x2000 {
+        return "#bad ANMF chunk"
+    }
+    y0 = 2 * c32
+    c32 = args.src.read_u24le_as_u32?()
+    if c32 >= this.width {
+        return "#bad ANMF chunk"
+    }
+    assert c32 < 0x4000 via "a < b: a < c; c <= b"(c: this.width)
+    w = c32 + 1
+    c32 = args.src.read_u24le_as_u32?()
+    if c32 >= this.height {
+        return "#bad ANMF chunk"
+    }
+    assert c32 < 0x4000 via "a < b: a < c; c <= b"(c: this.height)
+    h = c32 + 1
+    if ((x0 + w) > this.width) or ((y0 + h) > this.height) {
+        return "#bad ANMF chunk"
+    }
+
+    this.frame_rect_x0 = x0
+    this.frame_rect_y0 = y0
+    this.frame_width = w
+    this.frame_height = h
+
+    // There are 705_600000 flicks per second and the WebP frame duration is
+    // in milliseconds.
+    c32 = args.src.read_u24le_as_u32?()
+    this.frame_duration = (c32 as base.u64) * 705600
+
+    flags = args.src.read_u8?()
+    if (flags & 0x01) == 0 {
+        this.frame_disposal = base.ANIMATION_DISPOSAL__NONE
+    } else {
+        this.frame_disposal = base.ANIMATION_DISPOSAL__RESTORE_BACKGROUND
+    }
+    this.frame_overwrite_instead_of_blend = (flags & 0x02) <> 0
+
+    this.variant = 0x20
+    this.vp8x_alph_flags = 0
 }
 
 pub func decoder.decode_frame?(dst: ptr base.pixel_buffer, src: base.io_reader, blend: base.pixel_blend, workbuf: slice base.u8, opts: nptr base.decode_frame_options) {
@@ -538,6 +748,11 @@ pri func decoder.do_decode_frame?(dst: ptr base.pixel_buffer, src: base.io_reade
         this.do_decode_frame_config?(dst: nullptr, src: args.src)
     } else {
         return base."@end of data"
+    }
+
+    if (this.vp8x_header_flags & 0x02) <> 0 {
+        // TODO: decode animated WebP frames.
+        return "#unsupported WebP file"
     }
 
     while (this.variant & 0x03) == 0 {
@@ -652,6 +867,7 @@ pri func decoder.do_decode_frame?(dst: ptr base.pixel_buffer, src: base.io_reade
         yield? status
     }
 
+    this.num_decoded_frames_value ~sat+= 1
     this.call_sequence = 0x60
 }
 
@@ -667,27 +883,21 @@ pub func decoder.frame_dirty_rect() base.rect_ie_u32 {
 }
 
 pub func decoder.num_animation_loops() base.u32 {
-    return 0
+    return this.num_animation_loops_value
 }
 
 pub func decoder.num_decoded_frame_configs() base.u64 {
     if this.variant == 0x01 {
         return this.vp8.num_decoded_frame_configs()
     }
-    if this.call_sequence > 0x28 {
-        return 1
-    }
-    return 0
+    return this.num_decoded_frame_configs_value
 }
 
 pub func decoder.num_decoded_frames() base.u64 {
     if this.variant == 0x01 {
         return this.vp8.num_decoded_frames()
     }
-    if this.call_sequence > 0x40 {
-        return 1
-    }
-    return 0
+    return this.num_decoded_frames_value
 }
 
 pub func decoder.restart_frame!(index: base.u64, io_position: base.u64) base.status {
@@ -696,6 +906,19 @@ pub func decoder.restart_frame!(index: base.u64, io_position: base.u64) base.sta
     if this.call_sequence < 0x20 {
         return base."#bad call sequence"
     }
+
+    if (this.vp8x_header_flags & 0x02) <> 0 {
+        if args.io_position == 0 {
+            return base."#bad argument"
+        }
+        this.frame_config_io_position = args.io_position
+        this.frame_end_io_position = args.io_position
+        this.num_decoded_frame_configs_value = args.index
+        this.num_decoded_frames_value = args.index
+        this.call_sequence = 0x28
+        return ok
+    }
+
     if (args.index <> 0) or (args.io_position <> this.frame_config_io_position) {
         return base."#bad argument"
     }
@@ -711,6 +934,8 @@ pub func decoder.restart_frame!(index: base.u64, io_position: base.u64) base.sta
         this.vp8x_alph_flags = 0
     }
     this.sub_chunk_length = this.frame_sub_chunk_length
+    this.num_decoded_frame_configs_value = 0
+    this.num_decoded_frames_value = 0
     this.call_sequence = 0x28
     return ok
 }
