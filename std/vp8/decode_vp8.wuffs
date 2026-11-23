@@ -8,6 +8,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+pub status "#bad QUIRK_DST_X_AND_Y"
 pub status "#bad QUIRK_SOURCE_LENGTH"
 pub status "#bad QUIRK_WIDTH_AND_HEIGHT"
 pub status "#bad header"
@@ -42,6 +43,9 @@ pub struct decoder? implements base.image_decoder(
         quirk_source_length : base.u64,
 
         quirk_width_and_height : base.u64,
+
+        quirk_dst_x : base.u32[..= 0x3FFF],
+        quirk_dst_y : base.u32[..= 0x3FFF],
 
         // Just under 144 MiB, for 9 partitions each up to 0xFF_FFFF bytes.
         partitioned_data_length : base.u32[..= 0x08FF_FFF7],
@@ -220,6 +224,8 @@ pub func decoder.get_quirk(key: base.u32) base.u64 {
         }
     } else if args.key == QUIRK_WIDTH_AND_HEIGHT {
         return this.quirk_width_and_height
+    } else if args.key == QUIRK_DST_X_AND_Y {
+        return (this.quirk_dst_x as base.u64) | ((this.quirk_dst_y as base.u64) << 32)
     }
     return 0
 }
@@ -259,6 +265,16 @@ pub func decoder.set_quirk!(key: base.u32, value: base.u64) base.status {
         this.width = w
         this.height = h
         this.calculate_mbw_mbh!()
+        return ok
+
+    } else if args.key == QUIRK_DST_X_AND_Y {
+        w = (args.value & 0xFFFF_FFFF) as base.u32
+        h = (args.value >> 32) as base.u32
+        if (0x3FFF < w) or (0x3FFF < h) {
+            return "#bad QUIRK_DST_X_AND_Y"
+        }
+        this.quirk_dst_x = w
+        this.quirk_dst_y = h
         return ok
     }
 
@@ -496,10 +512,10 @@ pri func decoder.do_decode_frame?(dst: ptr base.pixel_buffer, src: base.io_reade
 
 pub func decoder.frame_dirty_rect() base.rect_ie_u32 {
     return this.util.make_rect_ie_u32(
-            min_incl_x: 0,
-            min_incl_y: 0,
-            max_excl_x: this.width,
-            max_excl_y: this.height)
+            min_incl_x: this.quirk_dst_x,
+            min_incl_y: this.quirk_dst_y,
+            max_excl_x: this.quirk_dst_x + this.width,
+            max_excl_y: this.quirk_dst_y + this.height)
 }
 
 pub func decoder.num_animation_loops() base.u32 {

@@ -41,3 +41,13 @@ pub const QUIRK_HAS_ALPHA_SIDE_CHANNEL : base.u32 = 0x6D7B_F800 | 0x00
 // This quirk mechanism lets the outer webp decoder tell the inner vp8 decoder
 // those dimensions, after parsing the VP8X chunk but before ALPH or VP8.
 pub const QUIRK_WIDTH_AND_HEIGHT : base.u32 = 0x6D7B_F800 | 0x01
+
+// Gives, out-of-band, where (in the destination pixel buffer) to place the
+// decoded image's top-left corner. The low 32 bits of the u64 quirk value are
+// the x coordinate and the high 32 bits are the y coordinate. Both coordinates
+// should range within 0x0000 ..= 0x3FFF. The default is (0, 0).
+//
+// For example, an animated WebP image's frames (each holding a VP8 chunk) can
+// be smaller than the canvas (the overall image) and be placed anywhere within
+// it.
+pub const QUIRK_DST_X_AND_Y : base.u32 = 0x6D7B_F800 | 0x02

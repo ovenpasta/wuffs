@@ -148,6 +148,129 @@ test_wuffs_vp8_decode_clip_m16_p15() {
 }
 
 const char*  //
+test_wuffs_vp8_decode_dst_x_and_y() {
+  CHECK_FOCUS(__func__);
+
+  // The test/data/peacock.24x19.lossy.webp file is a 20 byte header (for the
+  // RIFF, WEBP and VP8 chunk headers) followed by 290 bytes of VP8 data.
+  const uint64_t src_ri = 20;
+  const uint64_t src_len = 290;
+  const uint32_t src_w = 24;
+  const uint32_t src_h = 19;
+
+  const uint32_t pixfmts[] = {
+      WUFFS_BASE__PIXEL_FORMAT__BGRA_PREMUL,
+      WUFFS_BASE__PIXEL_FORMAT__BGRX,
+      WUFFS_BASE__PIXEL_FORMAT__BGR_565,
+      WUFFS_BASE__PIXEL_FORMAT__RGB,
+      WUFFS_BASE__PIXEL_FORMAT__Y,
+  };
+
+  // Decode the image twice, to two (larger) pixel buffers, first at (0, 0)
+  // and then at (dst_x, dst_y).
+  const uint32_t w = 29;
+  const uint32_t h = 27;
+  const uint32_t dst_x = 5;
+  const uint32_t dst_y = 8;
+  const size_t n = 4 * w * h;
+  if ((2 * n) > g_pixel_slice_u8.len) {
+    RETURN_FAIL("pixel buffer is too small");
+  }
+
+  for (size_t f = 0; f < WUFFS_TESTLIB_ARRAY_SIZE(pixfmts); f++) {
+    memset(g_pixel_slice_u8.ptr, 0, 2 * n);
+    uint32_t bytes_per_pixel = 0;
+
+    for (int i = 0; i < 2; i++) {
+      wuffs_base__io_buffer src = ((wuffs_base__io_buffer){
+          .data = g_src_slice_u8,
+      });
+      CHECK_STRING(read_file(&src, "test/data/peacock.24x19.lossy.webp"));
+      if (src.meta.wi != (src_ri + src_len)) {
+        RETURN_FAIL("src length: have %zu, want %" PRIu64, src.meta.wi,
+                    src_ri + src_len);
+      }
+      src.meta.ri = src_ri;
+
+      wuffs_vp8__decoder dec = {0};
+      CHECK_STATUS("initialize",
+                   wuffs_vp8__decoder__initialize(
+                       &dec, sizeof dec, WUFFS_VERSION,
+                       WUFFS_INITIALIZE__LEAVE_INTERNAL_BUFFERS_UNINITIALIZED));
+      CHECK_STATUS("set_quirk #0", wuffs_vp8__decoder__set_quirk(
+                                       &dec, WUFFS_BASE__QUIRK_SOURCE_LENGTH,
+                                       (src_len << 1) | 1));
+      if (i > 0) {
+        CHECK_STATUS("set_quirk #1",
+                     wuffs_vp8__decoder__set_quirk(
+                         &dec, WUFFS_VP8__QUIRK_DST_X_AND_Y,
+                         ((uint64_t)dst_x) | (((uint64_t)dst_y) << 32)));
+      }
+
+      wuffs_base__pixel_config pc = ((wuffs_base__pixel_config){});
+      wuffs_base__pixel_config__set(
+          &pc, pixfmts[f], WUFFS_BASE__PIXEL_SUBSAMPLING__NONE, w, h);
+      bytes_per_pixel =
+          wuffs_base__pixel_format__bits_per_pixel(&pc.private_impl.pixfmt) /
+          8;
+      wuffs_base__pixel_buffer pb = ((wuffs_base__pixel_buffer){});
+      CHECK_STATUS("set_from_slice",
+                   wuffs_base__pixel_buffer__set_from_slice(
+                       &pb, &pc,
+                       wuffs_base__make_slice_u8(g_pixel_slice_u8.ptr + (i * n),
+                                                 n)));
+
+      CHECK_STATUS("decode_image_config",
+                   wuffs_vp8__decoder__decode_image_config(&dec, NULL, &src));
+      wuffs_base__range_ii_u64 r = wuffs_vp8__decoder__workbuf_len(&dec);
+      if (wuffs_base__range_ii_u64__is_empty(&r) ||
+          (r.max_incl > g_work_slice_u8.len)) {
+        RETURN_FAIL("workbuf_len: bad range");
+      }
+      CHECK_STATUS("decode_frame",
+                   wuffs_vp8__decoder__decode_frame(
+                       &dec, &pb, &src, WUFFS_BASE__PIXEL_BLEND__SRC,
+                       wuffs_base__make_slice_u8(g_work_slice_u8.ptr,
+                                                 r.max_incl),
+                       NULL));
+
+      wuffs_base__rect_ie_u32 dirty =
+          wuffs_vp8__decoder__frame_dirty_rect(&dec);
+      uint32_t x0 = (i > 0) ? dst_x : 0;
+      uint32_t y0 = (i > 0) ? dst_y : 0;
+      if ((dirty.min_incl_x != x0) || (dirty.min_incl_y != y0) ||
+          (dirty.max_excl_x != (x0 + src_w)) ||
+          (dirty.max_excl_y != (y0 + src_h))) {
+        RETURN_FAIL("pixfmt=0x%08" PRIX32 ", i=%d: frame_dirty_rect: bad rect",
+                    pixfmts[f], i);
+      }
+    }
+
+    const uint8_t* want = g_pixel_slice_u8.ptr;
+    const uint8_t* have = g_pixel_slice_u8.ptr + n;
+    for (uint32_t y = 0; y < h; y++) {
+      for (uint32_t x = 0; x < w; x++) {
+        static const uint8_t zeroes[4] = {0};
+        const uint8_t* want_pixel = zeroes;
+        if ((dst_x <= x) && (x < (dst_x + src_w)) && (dst_y <= y) &&
+            (y < (dst_y + src_h))) {
+          want_pixel =
+              want + (bytes_per_pixel * (((y - dst_y) * w) + (x - dst_x)));
+        }
+        const uint8_t* have_pixel = have + (bytes_per_pixel * ((y * w) + x));
+        if (memcmp(have_pixel, want_pixel, bytes_per_pixel)) {
+          RETURN_FAIL("pixfmt=0x%08" PRIX32 ", x=%" PRIu32 ", y=%" PRIu32
+                      ": pixels differ",
+                      pixfmts[f], x, y);
+        }
+      }
+    }
+  }
+
+  return NULL;
+}
+
+const char*  //
 test_wuffs_vp8_decode_inverse_dct_full() {
   CHECK_FOCUS(__func__);
 
@@ -498,6 +621,7 @@ test_wuffs_vp8_decode_predict_y4() {
 proc g_tests[] = {
 
     test_wuffs_vp8_decode_clip_m16_p15,
+    test_wuffs_vp8_decode_dst_x_and_y,
     test_wuffs_vp8_decode_inverse_dct_full,
     test_wuffs_vp8_decode_inverse_wht,
     test_wuffs_vp8_decode_predict_uv8,

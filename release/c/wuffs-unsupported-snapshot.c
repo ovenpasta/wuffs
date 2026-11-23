@@ -15681,6 +15681,7 @@ struct wuffs_thumbhash__decoder__struct {
 
 // ---------------- Status Codes
 
+extern const char wuffs_vp8__error__bad_quirk_dst_x_and_y[];
 extern const char wuffs_vp8__error__bad_quirk_source_length[];
 extern const char wuffs_vp8__error__bad_quirk_width_and_height[];
 extern const char wuffs_vp8__error__bad_header[];
@@ -15695,6 +15696,8 @@ extern const char wuffs_vp8__error__unsupported_vp8_file[];
 #define WUFFS_VP8__QUIRK_HAS_ALPHA_SIDE_CHANNEL 1836840960u
 
 #define WUFFS_VP8__QUIRK_WIDTH_AND_HEIGHT 1836840961u
+
+#define WUFFS_VP8__QUIRK_DST_X_AND_Y 1836840962u
 
 #define WUFFS_VP8__DECODER_WORKBUF_LEN_MAX_INCL_WORST_CASE 822050816u
 
@@ -15871,6 +15874,8 @@ struct wuffs_vp8__decoder__struct {
     uint64_t f_frame_config_io_position;
     uint64_t f_quirk_source_length;
     uint64_t f_quirk_width_and_height;
+    uint32_t f_quirk_dst_x;
+    uint32_t f_quirk_dst_y;
     uint32_t f_partitioned_data_length;
     uint32_t f_workbuf_yuv_y_stride;
     uint32_t f_workbuf_yuv_uv_stride;
@@ -81837,6 +81842,7 @@ wuffs_thumbhash__decoder__workbuf_len(
 
 // ---------------- Status Codes Implementations
 
+const char wuffs_vp8__error__bad_quirk_dst_x_and_y[] = "#vp8: bad QUIRK_DST_X_AND_Y";
 const char wuffs_vp8__error__bad_quirk_source_length[] = "#vp8: bad QUIRK_SOURCE_LENGTH";
 const char wuffs_vp8__error__bad_quirk_width_and_height[] = "#vp8: bad QUIRK_WIDTH_AND_HEIGHT";
 const char wuffs_vp8__error__bad_header[] = "#vp8: bad header";
@@ -85173,8 +85179,8 @@ wuffs_vp8__decoder__swizzle(
   v_status = wuffs_base__pixel_swizzler__swizzle_ycck(&self->private_impl.f_swizzler,
       a_dst,
       wuffs_base__pixel_buffer__palette(a_dst),
-      0u,
-      0u,
+      self->private_impl.f_quirk_dst_x,
+      self->private_impl.f_quirk_dst_y,
       0u,
       self->private_impl.f_width,
       0u,
@@ -86133,6 +86139,8 @@ wuffs_vp8__decoder__get_quirk(
     }
   } else if (a_key == 1836840961u) {
     return self->private_impl.f_quirk_width_and_height;
+  } else if (a_key == 1836840962u) {
+    return (((uint64_t)(self->private_impl.f_quirk_dst_x)) | (((uint64_t)(self->private_impl.f_quirk_dst_y)) << 32u));
   }
   return 0u;
 }
@@ -86190,6 +86198,15 @@ wuffs_vp8__decoder__set_quirk(
     self->private_impl.f_width = v_w;
     self->private_impl.f_height = v_h;
     wuffs_vp8__decoder__calculate_mbw_mbh(self);
+    return wuffs_base__make_status(NULL);
+  } else if (a_key == 1836840962u) {
+    v_w = ((uint32_t)(a_value));
+    v_h = ((uint32_t)((a_value >> 32u)));
+    if ((16383u < v_w) || (16383u < v_h)) {
+      return wuffs_base__make_status(wuffs_vp8__error__bad_quirk_dst_x_and_y);
+    }
+    self->private_impl.f_quirk_dst_x = v_w;
+    self->private_impl.f_quirk_dst_y = v_h;
     return wuffs_base__make_status(NULL);
   }
   return wuffs_base__make_status(wuffs_base__error__unsupported_option);
@@ -86842,10 +86859,10 @@ wuffs_vp8__decoder__frame_dirty_rect(
   }
 
   return wuffs_base__utility__make_rect_ie_u32(
-      0u,
-      0u,
-      self->private_impl.f_width,
-      self->private_impl.f_height);
+      self->private_impl.f_quirk_dst_x,
+      self->private_impl.f_quirk_dst_y,
+      (self->private_impl.f_quirk_dst_x + self->private_impl.f_width),
+      (self->private_impl.f_quirk_dst_y + self->private_impl.f_height));
 }
 
 // -------- func vp8.decoder.num_animation_loops
