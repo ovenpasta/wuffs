@@ -38,6 +38,12 @@ pub struct decoder? implements base.image_decoder(
         width  : base.u32[..= 0x4000],
         height : base.u32[..= 0x4000],
 
+        // The width and height of the frame being decoded, which is what the
+        // VP8L (and ALPH) decoding works with. For a still image, they're the
+        // same as this.width and this.height.
+        frame_width  : base.u32[..= 0x4000],
+        frame_height : base.u32[..= 0x4000],
+
         // The call sequence state machine is discussed in
         // (/doc/std/image-decoders-call-sequence.md).
         call_sequence : base.u8,
@@ -348,8 +354,8 @@ pri func decoder.do_decode_image_config_limited_vp8l?(src: base.io_reader) {
 
     if this.vp8x_header_flags <> 0 {
         // For a VP8L chunk inside a VP8X container, the VP8X chunk has already
-        // set this.width, this.height and the workbuf offsets.
-        if (width <> this.width) or (height <> this.height) {
+        // set this.frame_width, this.frame_height and the workbuf offsets.
+        if (width <> this.frame_width) or (height <> this.frame_height) {
             return "#inconsistent width and height"
         }
         return ok
@@ -357,6 +363,8 @@ pri func decoder.do_decode_image_config_limited_vp8l?(src: base.io_reader) {
 
     this.width = width
     this.height = height
+    this.frame_width = width
+    this.frame_height = height
     transform_size = 4 * ((this.width + 3) >> 2) * ((this.height + 3) >> 2)
     this.workbuf_offset_for_transform[0] = (4 * this.width * this.height) + (0 * transform_size)
     this.workbuf_offset_for_transform[1] = (4 * this.width * this.height) + (1 * transform_size)
@@ -388,6 +396,8 @@ pri func decoder.do_decode_image_config_limited_vp8x?(src: base.io_reader) {
         return "#unsupported WebP file"
     }
     this.height = (c32 & 0x3FFF) + 1
+    this.frame_width = this.width
+    this.frame_height = this.height
 
     // It's valid to call this.workbuf_len after this.decode_image_config
     // returns, for the caller to know how much dynamically-sized memory
@@ -577,7 +587,7 @@ pri func decoder.do_decode_frame?(dst: ptr base.pixel_buffer, src: base.io_reade
             this.vp8.reset!()
             this.vp8.set_quirk!(
                     key: vp8.QUIRK_WIDTH_AND_HEIGHT,
-                    value: ((this.width as base.u64) | ((this.height as base.u64) << 32)))
+                    value: ((this.frame_width as base.u64) | ((this.frame_height as base.u64) << 32)))
             if this.variant == 0x40 {
                 this.vp8.set_quirk!(
                         key: vp8.QUIRK_HAS_ALPHA_SIDE_CHANNEL,

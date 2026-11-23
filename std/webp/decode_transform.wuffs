@@ -37,7 +37,7 @@ pri func decoder.apply_transform_predictor!(pix: slice base.u8, width: base.u32[
     var sum_l : base.u32
     var sum_t : base.u32
 
-    if (args.width <= 0) or (this.height <= 0) {
+    if (args.width <= 0) or (this.frame_height <= 0) {
         return nothing
     }
 
@@ -66,8 +66,8 @@ pri func decoder.apply_transform_predictor!(pix: slice base.u8, width: base.u32[
     mask = ((1 as base.u32) << tile_size_log2) - 1
 
     y = 1
-    while y < this.height {
-        assert y < 0x4000 via "a < b: a < c; c <= b"(c: this.height)
+    while y < this.frame_height {
+        assert y < 0x4000 via "a < b: a < c; c <= b"(c: this.frame_height)
 
         t = (4 * (y >> tile_size_log2) * tiles_per_row) as base.u64
         tile_data = this.util.empty_slice_u8()
@@ -305,8 +305,8 @@ pri func decoder.apply_transform_cross_color!(pix: slice base.u8, width: base.u3
     mask = ((1 as base.u32) << tile_size_log2) - 1
 
     y = 0
-    while y < this.height {
-        assert y < 0x4000 via "a < b: a < c; c <= b"(c: this.height)
+    while y < this.frame_height {
+        assert y < 0x4000 via "a < b: a < c; c <= b"(c: this.frame_height)
 
         t = (4 * (y >> tile_size_log2) * tiles_per_row) as base.u64
         tile_data = this.util.empty_slice_u8()
@@ -401,8 +401,8 @@ pri func decoder.apply_transform_color_indexing!(pix: slice base.u8, width: base
     src_index = (this.workbuf_offset_for_color_indexing + 1) as base.u64
 
     y = 0
-    while y < this.height {
-        assert y < 0x4000 via "a < b: a < c; c <= b"(c: this.height)
+    while y < this.frame_height {
+        assert y < 0x4000 via "a < b: a < c; c <= b"(c: this.frame_height)
 
         di = (4 * (y + 0) * args.width) as base.u64
         dj = (4 * (y + 1) * args.width) as base.u64

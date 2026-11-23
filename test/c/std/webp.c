@@ -669,8 +669,8 @@ test_wuffs_webp_decode_filter_alph() {
   };
 
   wuffs_webp__decoder dec = {0};
-  dec.private_impl.f_width = width;
-  dec.private_impl.f_height = height;
+  dec.private_impl.f_frame_width = width;
+  dec.private_impl.f_frame_height = height;
 
   for (int filter = 0; filter < 3; filter++) {
     uint8_t buf[246];

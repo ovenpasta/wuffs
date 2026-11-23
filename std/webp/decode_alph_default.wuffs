@@ -41,7 +41,7 @@ pri func decoder.decode_alph_limited?(src: base.io_reader, workbuf: slice base.u
 
     if (this.vp8x_alph_flags & 3) == 0 {
         i = 0
-        j = (this.width * this.height) as base.u64
+        j = (this.frame_width * this.frame_height) as base.u64
         while i < j,
                 inv j <= 0x1000_0000,
         {
@@ -65,7 +65,7 @@ pri func decoder.decode_alph_limited?(src: base.io_reader, workbuf: slice base.u
                 workbuf: args.workbuf,
                 opts: nullptr)
 
-        n = (this.width * this.height * 4) as base.u64
+        n = (this.frame_width * this.frame_height * 4) as base.u64
         if n <= args.workbuf.length() {
             this.compact_alph!(s: args.workbuf[.. n])
         }
@@ -74,7 +74,7 @@ pri func decoder.decode_alph_limited?(src: base.io_reader, workbuf: slice base.u
     }
     this.vp8x_alph_flags |= 2
 
-    n = (this.width * this.height) as base.u64
+    n = (this.frame_width * this.frame_height) as base.u64
     if n <= args.workbuf.length() {
         if (this.vp8x_alph_flags & 0x0C) == 0x04 {
             this.filter_alph_horizontal!(s: args.workbuf[.. n])
@@ -115,12 +115,12 @@ pri func decoder.filter_alph_horizontal!(s: slice base.u8) {
     var pred : base.u8
 
     y = 0
-    while y < this.height {
-        assert y < 0x4000 via "a < b: a < c; c <= b"(c: this.height)
+    while y < this.frame_height {
+        assert y < 0x4000 via "a < b: a < c; c <= b"(c: this.frame_height)
 
         pred = 0
         if y > 0 {
-            i = ((y - 1) * this.width) as base.u64
+            i = ((y - 1) * this.frame_width) as base.u64
             if i >= args.s.length() {
                 break
             }
@@ -128,12 +128,12 @@ pri func decoder.filter_alph_horizontal!(s: slice base.u8) {
         }
 
         x = 0
-        while x < this.width,
+        while x < this.frame_width,
                 inv y < 0x4000,
         {
-            assert x < 0x4000 via "a < b: a < c; c <= b"(c: this.width)
+            assert x < 0x4000 via "a < b: a < c; c <= b"(c: this.frame_width)
 
-            i = ((y * this.width) + x) as base.u64
+            i = ((y * this.frame_width) + x) as base.u64
             if i >= args.s.length() {
                 break
             }
@@ -154,8 +154,8 @@ pri func decoder.filter_alph_vertical!(s: slice base.u8) {
     var pred : base.u8
 
     x = 0
-    while x < this.width {
-        assert x < 0x4000 via "a < b: a < c; c <= b"(c: this.width)
+    while x < this.frame_width {
+        assert x < 0x4000 via "a < b: a < c; c <= b"(c: this.frame_width)
 
         pred = 0
         if x > 0 {
@@ -167,12 +167,12 @@ pri func decoder.filter_alph_vertical!(s: slice base.u8) {
         }
 
         y = 0
-        while y < this.height,
+        while y < this.frame_height,
                 inv x < 0x4000,
         {
-            assert y < 0x4000 via "a < b: a < c; c <= b"(c: this.height)
+            assert y < 0x4000 via "a < b: a < c; c <= b"(c: this.frame_height)
 
-            i = ((y * this.width) + x) as base.u64
+            i = ((y * this.frame_width) + x) as base.u64
             if i >= args.s.length() {
                 break
             }
@@ -198,8 +198,8 @@ pri func decoder.filter_alph_gradient!(s: slice base.u8) {
 
     // First row.
     x = 0
-    while x < this.width {
-        assert x < 0x4000 via "a < b: a < c; c <= b"(c: this.width)
+    while x < this.frame_width {
+        assert x < 0x4000 via "a < b: a < c; c <= b"(c: this.frame_width)
 
         i = x as base.u64
         if i >= args.s.length() {
@@ -213,12 +213,12 @@ pri func decoder.filter_alph_gradient!(s: slice base.u8) {
 
     // Other rows.
     y = 1
-    while y < this.height,
+    while y < this.frame_height,
             inv y >= 1,
     {
-        assert y < 0x4000 via "a < b: a < c; c <= b"(c: this.height)
+        assert y < 0x4000 via "a < b: a < c; c <= b"(c: this.frame_height)
 
-        i = (((y - 1) * this.width) + 0) as base.u64
+        i = (((y - 1) * this.frame_width) + 0) as base.u64
         if i >= args.s.length() {
             break
         }
@@ -227,19 +227,19 @@ pri func decoder.filter_alph_gradient!(s: slice base.u8) {
         l = t
 
         x = 0
-        while x < this.width,
+        while x < this.frame_width,
                 inv y >= 1,
                 inv y < 0x4000,
         {
-            assert x < 0x4000 via "a < b: a < c; c <= b"(c: this.width)
+            assert x < 0x4000 via "a < b: a < c; c <= b"(c: this.frame_width)
 
-            i = (((y - 1) * this.width) + x) as base.u64
+            i = (((y - 1) * this.frame_width) + x) as base.u64
             if i >= args.s.length() {
                 break
             }
             t = args.s[i]
 
-            i = ((y * this.width) + x) as base.u64
+            i = ((y * this.frame_width) + x) as base.u64
             if i >= args.s.length() {
                 break
             }
