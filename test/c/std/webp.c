@@ -142,8 +142,13 @@ test_wuffs_webp_decode_interface_vp8x_alpha_lossy() {
 }
 
 const char*  //
-test_wuffs_webp_decode_many_small_reads() {
-  CHECK_FOCUS(__func__);
+do_test_wuffs_webp_decode_many_small_reads(
+    const char* filename,
+    uint32_t want_width,
+    uint32_t want_height,
+    uint32_t want_pixfmt_repr,
+    int want_num_iters_greater_than,
+    wuffs_base__color_u32_argb_premul want_last_pixel) {
   wuffs_webp__decoder* dec = &g_webp_decoder;
   CHECK_STATUS("initialize",
                wuffs_webp__decoder__initialize(
@@ -153,31 +158,31 @@ test_wuffs_webp_decode_many_small_reads() {
   wuffs_base__io_buffer src = ((wuffs_base__io_buffer){
       .data = g_src_slice_u8,
   });
-  CHECK_STRING(read_file(&src, "test/data/mona-lisa.21x32.q0.lossy.webp"));
+  CHECK_STRING(read_file(&src, filename));
 
   wuffs_base__image_config ic = ((wuffs_base__image_config){});
   CHECK_STATUS("decode_image_config",
                wuffs_webp__decoder__decode_image_config(dec, &ic, &src));
 
-  const uint32_t w = 21;
-  if (wuffs_base__pixel_config__width(&ic.pixcfg) != 21) {
-    RETURN_FAIL("width: have %" PRIu32 ", want 21",
-                wuffs_base__pixel_config__width(&ic.pixcfg));
+  const uint32_t w = want_width;
+  if (wuffs_base__pixel_config__width(&ic.pixcfg) != w) {
+    RETURN_FAIL("width: have %" PRIu32 ", want %" PRIu32,
+                wuffs_base__pixel_config__width(&ic.pixcfg), w);
   }
-  const uint32_t h = 32;
-  if (wuffs_base__pixel_config__height(&ic.pixcfg) != 32) {
-    RETURN_FAIL("height: have %" PRIu32 ", want 32",
-                wuffs_base__pixel_config__height(&ic.pixcfg));
+  const uint32_t h = want_height;
+  if (wuffs_base__pixel_config__height(&ic.pixcfg) != h) {
+    RETURN_FAIL("height: have %" PRIu32 ", want %" PRIu32,
+                wuffs_base__pixel_config__height(&ic.pixcfg), h);
   }
   if (wuffs_base__pixel_config__pixel_format(&ic.pixcfg).repr !=
-      WUFFS_BASE__PIXEL_FORMAT__BGRX) {
-    RETURN_FAIL("pixel_format: have %" PRIu32
-                ", want WUFFS_BASE__PIXEL_FORMAT__BGRX",
-                wuffs_base__pixel_config__pixel_format(&ic.pixcfg).repr);
+      want_pixfmt_repr) {
+    RETURN_FAIL("pixel_format: have 0x%08" PRIX32 ", want 0x%08" PRIX32,
+                wuffs_base__pixel_config__pixel_format(&ic.pixcfg).repr,
+                want_pixfmt_repr);
   }
 
   // 30 is 12 for the RIFF container header, 8 for the RIFF chunk header and
-  // 10 for the VP8 header.
+  // 10 for the VP8 (or VP8X) header.
   if (wuffs_base__image_config__first_frame_io_position(&ic) != 30) {
     RETURN_FAIL("first_frame_io_position: have %" PRIu64 ", want 30",
                 wuffs_base__image_config__first_frame_io_position(&ic));
@@ -225,17 +230,38 @@ test_wuffs_webp_decode_many_small_reads() {
     }
   }
 
-  if (num_iters <= 1) {
-    RETURN_FAIL("num_iters: have %d, want > 1", num_iters);
+  if (num_iters <= want_num_iters_greater_than) {
+    RETURN_FAIL("num_iters: have %d, want > %d", num_iters,
+                want_num_iters_greater_than);
   }
 
   wuffs_base__color_u32_argb_premul last_pixel =
       wuffs_base__pixel_buffer__color_u32_at(&pb, w - 1, h - 1);
-  if (last_pixel != 0xFF210A1B) {
-    RETURN_FAIL("last_pixel: have 0x%" PRIX32 ", want 0xFF210A1B", last_pixel);
+  if (last_pixel != want_last_pixel) {
+    RETURN_FAIL("last_pixel: have 0x%08" PRIX32 ", want 0x%08" PRIX32,
+                last_pixel, want_last_pixel);
   }
 
   return NULL;
+}
+
+const char*  //
+test_wuffs_webp_decode_many_small_reads() {
+  CHECK_FOCUS(__func__);
+  return do_test_wuffs_webp_decode_many_small_reads(
+      "test/data/mona-lisa.21x32.q0.lossy.webp", 21, 32,
+      WUFFS_BASE__PIXEL_FORMAT__BGRX, 1, 0xFF210A1B);
+}
+
+const char*  //
+test_wuffs_webp_decode_many_small_reads_uncompressed_alph() {
+  CHECK_FOCUS(__func__);
+  // The ALPH chunk's payload is 1009 bytes: a 1 byte header and then 36 * 28
+  // uncompressed alpha values. With 10 byte reads, that's over 100 reads.
+  return do_test_wuffs_webp_decode_many_small_reads(
+      "test/data/"
+      "hippopotamus.masked-with-muybridge.uncompressed-alpha.lossy.webp",
+      36, 28, WUFFS_BASE__PIXEL_FORMAT__BGRA_NONPREMUL, 100, 0x7D787878);
 }
 
 const char*  //
@@ -540,6 +566,14 @@ test_mimic_webp_lossy_decode_sharpness() {
       "test/data/hippopotamus.sharpness3.lossy.webp");
 }
 
+const char*  //
+test_mimic_webp_lossy_decode_uncompressed_alph() {
+  CHECK_FOCUS(__func__);
+  return do_test_mimic_webp_decode(
+      "test/data/"
+      "hippopotamus.masked-with-muybridge.uncompressed-alpha.lossy.webp");
+}
+
 #endif  // WUFFS_MIMIC
 
 // ---------------- WebP Benches
@@ -764,6 +798,7 @@ proc g_tests[] = {
     test_wuffs_webp_decode_interface_narrow_back_reference,
     test_wuffs_webp_decode_interface_vp8x_alpha_lossy,
     test_wuffs_webp_decode_many_small_reads,
+    test_wuffs_webp_decode_many_small_reads_uncompressed_alph,
 
 #ifdef WUFFS_MIMIC
 
@@ -781,6 +816,7 @@ proc g_tests[] = {
     test_mimic_webp_lossy_decode_image_552k_32bpp,
     test_mimic_webp_lossy_decode_image_4002k_24bpp,
     test_mimic_webp_lossy_decode_sharpness,
+    test_mimic_webp_lossy_decode_uncompressed_alph,
 
 #endif  // WUFFS_MIMIC
 

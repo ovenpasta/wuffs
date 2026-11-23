@@ -32,12 +32,31 @@ pri func decoder.decode_alph?(src: base.io_reader, workbuf: slice base.u8) {
 }
 
 pri func decoder.decode_alph_limited?(src: base.io_reader, workbuf: slice base.u8) {
-    var n : base.u64
+    var i        : base.u64
+    var j        : base.u64
+    var n_copied : base.u32
+    var n        : base.u64
 
     this.vp8x_alph_flags = args.src.read_u8?()
 
     if (this.vp8x_alph_flags & 3) == 0 {
-        args.src.limited_copy_u32_to_slice!(up_to: this.width * this.height, s: args.workbuf)
+        i = 0
+        j = (this.width * this.height) as base.u64
+        while i < j,
+                inv j <= 0x1000_0000,
+        {
+            if j > args.workbuf.length() {
+                return base."#bad workbuf length"
+            }
+            assert j > i via "a > b: b < a"()
+            n_copied = args.src.limited_copy_u32_to_slice!(
+                    up_to: ((j - i) & 0xFFFF_FFFF) as base.u32,
+                    s: args.workbuf[i .. j])
+            i ~mod+= n_copied as base.u64
+            if i < j {
+                yield? base."$short read"
+            }
+        }
     } else if (this.vp8x_alph_flags & 3) == 1 {
         this.do_decode_frame_vp8l?(
                 dst: nullptr,

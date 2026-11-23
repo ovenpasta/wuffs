@@ -16694,6 +16694,10 @@ struct wuffs_webp__decoder__struct {
     uint16_t f_huffman_nodes[256][6267];
 
     struct {
+      uint64_t v_i;
+      uint64_t v_j;
+    } s_decode_alph_limited;
+    struct {
       uint32_t v_hg;
       uint32_t v_ht;
     } s_decode_huffman_groups;
@@ -88426,6 +88430,9 @@ wuffs_webp__decoder__decode_alph_limited(
     wuffs_base__slice_u8 a_workbuf) {
   wuffs_base__status status = wuffs_base__make_status(NULL);
 
+  uint64_t v_i = 0;
+  uint64_t v_j = 0;
+  uint32_t v_n_copied = 0;
   uint64_t v_n = 0;
 
   const uint8_t* iop_a_src = NULL;
@@ -88440,6 +88447,10 @@ wuffs_webp__decoder__decode_alph_limited(
   }
 
   uint32_t coro_susp_point = self->private_impl.p_decode_alph_limited;
+  if (coro_susp_point) {
+    v_i = self->private_data.s_decode_alph_limited.v_i;
+    v_j = self->private_data.s_decode_alph_limited.v_j;
+  }
   switch (coro_susp_point) {
     WUFFS_BASE__COROUTINE_SUSPENSION_POINT_0;
 
@@ -88453,13 +88464,26 @@ wuffs_webp__decoder__decode_alph_limited(
       self->private_impl.f_vp8x_alph_flags = t_0;
     }
     if (((uint8_t)(self->private_impl.f_vp8x_alph_flags & 3u)) == 0u) {
-      wuffs_private_impl__io_reader__limited_copy_u32_to_slice(
-          &iop_a_src, io2_a_src,(self->private_impl.f_width * self->private_impl.f_height), a_workbuf);
+      v_i = 0u;
+      v_j = ((uint64_t)((self->private_impl.f_width * self->private_impl.f_height)));
+      while (v_i < v_j) {
+        if (v_j > ((uint64_t)(a_workbuf.len))) {
+          status = wuffs_base__make_status(wuffs_base__error__bad_workbuf_length);
+          goto exit;
+        }
+        v_n_copied = wuffs_private_impl__io_reader__limited_copy_u32_to_slice(
+            &iop_a_src, io2_a_src,((uint32_t)((v_j - v_i))), wuffs_base__slice_u8__subslice_ij(a_workbuf, v_i, v_j));
+        v_i += ((uint64_t)(v_n_copied));
+        if (v_i < v_j) {
+          status = wuffs_base__make_status(wuffs_base__suspension__short_read);
+          WUFFS_BASE__COROUTINE_SUSPENSION_POINT_MAYBE_SUSPEND(2);
+        }
+      }
     } else if (((uint8_t)(self->private_impl.f_vp8x_alph_flags & 3u)) == 1u) {
       if (a_src) {
         a_src->meta.ri = ((size_t)(iop_a_src - a_src->data.ptr));
       }
-      WUFFS_BASE__COROUTINE_SUSPENSION_POINT(2);
+      WUFFS_BASE__COROUTINE_SUSPENSION_POINT(3);
       status = wuffs_webp__decoder__do_decode_frame_vp8l(self,
           NULL,
           a_src,
@@ -88492,7 +88516,6 @@ wuffs_webp__decoder__decode_alph_limited(
       }
     }
 
-    goto ok;
     ok:
     self->private_impl.p_decode_alph_limited = 0;
     goto exit;
@@ -88501,6 +88524,8 @@ wuffs_webp__decoder__decode_alph_limited(
   goto suspend;
   suspend:
   self->private_impl.p_decode_alph_limited = wuffs_base__status__is_suspension(&status) ? coro_susp_point : 0;
+  self->private_data.s_decode_alph_limited.v_i = v_i;
+  self->private_data.s_decode_alph_limited.v_j = v_j;
 
   goto exit;
   exit:
