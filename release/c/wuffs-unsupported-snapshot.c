@@ -19403,6 +19403,8 @@ wuffs_base__pixel_swizzler__swizzle_ycck(
     const wuffs_base__pixel_swizzler* p,
     wuffs_base__pixel_buffer* dst,
     wuffs_base__slice_u8 dst_palette,
+    uint32_t dst_x_offset,
+    uint32_t dst_y_offset,
     uint32_t x_min_incl,
     uint32_t x_max_excl,
     uint32_t y_min_incl,
@@ -34384,11 +34386,19 @@ wuffs_private_impl__swizzle_flattened_length(uint32_t width,
   return ((h - 1) * s) + w;
 }
 
+// wuffs_base__pixel_swizzler__swizzle_ycck converts the (x_min_incl ..
+// x_max_excl) by (y_min_incl .. y_max_excl) rectangle, whose top-left corner
+// is the srcN slices' first samples, and writes it to dst, offset by
+// (dst_x_offset, dst_y_offset). The offset is applied after upsampling, so
+// that a non-zero offset (unlike a non-zero x_min_incl or y_min_incl) is
+// compatible with a non-zero ycc_upsampling.
 WUFFS_BASE__MAYBE_STATIC wuffs_base__status  //
 wuffs_base__pixel_swizzler__swizzle_ycck(
     const wuffs_base__pixel_swizzler* p,
     wuffs_base__pixel_buffer* dst,
     wuffs_base__slice_u8 dst_palette,
+    uint32_t dst_x_offset,
+    uint32_t dst_y_offset,
     uint32_t x_min_incl,
     uint32_t x_max_excl,
     uint32_t y_min_incl,
@@ -34551,10 +34561,13 @@ wuffs_base__pixel_swizzler__swizzle_ycck(
     half_height_for_2to1 = wuffs_base__u32__min(half_height_for_2to1, height3);
   }
 
-  x_max_excl = wuffs_base__u32__min(
-      x_max_excl, wuffs_base__pixel_config__width(&dst->pixcfg));
-  y_max_excl = wuffs_base__u32__min(
-      y_max_excl, wuffs_base__pixel_config__height(&dst->pixcfg));
+  uint32_t dst_width = wuffs_base__pixel_config__width(&dst->pixcfg);
+  uint32_t dst_height = wuffs_base__pixel_config__height(&dst->pixcfg);
+  if ((dst_x_offset >= dst_width) || (dst_y_offset >= dst_height)) {
+    return wuffs_base__make_status(NULL);
+  }
+  x_max_excl = wuffs_base__u32__min(x_max_excl, dst_width - dst_x_offset);
+  y_max_excl = wuffs_base__u32__min(y_max_excl, dst_height - dst_y_offset);
   if ((x_min_incl >= x_max_excl) || (y_min_incl >= y_max_excl)) {
     return wuffs_base__make_status(NULL);
   }
@@ -34641,6 +34654,24 @@ wuffs_base__pixel_swizzler__swizzle_ycck(
           wuffs_base__error__unsupported_pixel_swizzler_option);
   }
 #endif  // defined(WUFFS_CONFIG__DST_PIXEL_FORMAT__ENABLE_ALLOWLIST)
+
+  // For a non-zero (dst_x_offset, dst_y_offset), swizzle to a view of dst
+  // whose top-left pixel is at that offset. All of the pixel formats accepted
+  // above have a whole number of bytes per pixel.
+  wuffs_base__pixel_buffer dst_view;
+  if ((dst_x_offset | dst_y_offset) != 0) {
+    uint64_t bytes_per_pixel = wuffs_base__pixel_format__bits_per_pixel(
+                                   &dst->pixcfg.private_impl.pixfmt) /
+                               8u;
+    dst_view = *dst;
+    dst_view.pixcfg.private_impl.width = dst_width - dst_x_offset;
+    dst_view.pixcfg.private_impl.height = dst_height - dst_y_offset;
+    dst_view.private_impl.planes[0] = wuffs_base__table_u8__subtable_ij(
+        dst->private_impl.planes[0], bytes_per_pixel * dst_x_offset,
+        dst_y_offset, dst->private_impl.planes[0].width,
+        dst->private_impl.planes[0].height);
+    dst = &dst_view;
+  }
 
   // ----
 
@@ -58648,6 +58679,8 @@ wuffs_jpeg__decoder__swizzle_colorful(
   v_status = wuffs_base__pixel_swizzler__swizzle_ycck(&self->private_impl.f_swizzler,
       a_dst,
       wuffs_base__pixel_buffer__palette_or_else(a_dst, wuffs_base__make_slice_u8(self->private_data.f_dst_palette, 1024)),
+      0u,
+      0u,
       (a_x0 & 65535u),
       wuffs_base__u32__min(a_x1, self->private_impl.f_width),
       (a_y0 & 65535u),
@@ -85140,6 +85173,8 @@ wuffs_vp8__decoder__swizzle(
   v_status = wuffs_base__pixel_swizzler__swizzle_ycck(&self->private_impl.f_swizzler,
       a_dst,
       wuffs_base__pixel_buffer__palette(a_dst),
+      0u,
+      0u,
       0u,
       self->private_impl.f_width,
       0u,

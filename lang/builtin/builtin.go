@@ -743,6 +743,8 @@ var funcsOther = [...]string{
 	"pixel_swizzler.swizzle_ycck!(" +
 		"dst: ptr pixel_buffer," +
 		"dst_palette: slice u8," +
+		"dst_x_offset: u32," +
+		"dst_y_offset: u32," +
 		"x_min_incl: u32[..= 0xFFFF]," +
 		"x_max_excl: u32[..= 0xFFFF]," +
 		"y_min_incl: u32[..= 0xFFFF]," +

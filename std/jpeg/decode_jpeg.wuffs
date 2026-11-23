@@ -2150,6 +2150,8 @@ pri func decoder.swizzle_colorful!(dst: ptr base.pixel_buffer, workbuf: slice ba
     status = this.swizzler.swizzle_ycck!(
             dst: args.dst,
             dst_palette: args.dst.palette_or_else(fallback: this.dst_palette[..]),
+            dst_x_offset: 0,
+            dst_y_offset: 0,
             x_min_incl: args.x0 & 0xFFFF,
             x_max_excl: args.x1.min(no_more_than: this.width),
             y_min_incl: args.y0 & 0xFFFF,

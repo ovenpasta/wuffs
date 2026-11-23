@@ -233,6 +233,9 @@ fuzz_swizzle_ycck(wuffs_base__io_buffer* src, uint64_t hash) {
   uint32_t y_min_incl = (63 & (hash >> 20)) + 1;
   uint32_t y_max_excl = (63 & (hash >> 26)) + 1;
 
+  uint32_t dst_x_offset = 15 & (hash >> 44);
+  uint32_t dst_y_offset = 15 & (hash >> 48);
+
   uint32_t width_in_mcus = (3 & (hash >> 32)) + 1;
   uint32_t height_in_mcus = (3 & (hash >> 34)) + 1;
 
@@ -403,6 +406,7 @@ fuzz_swizzle_ycck(wuffs_base__io_buffer* src, uint64_t hash) {
   uint8_t scratch_buffer[2048];
   wuffs_base__status status = wuffs_base__pixel_swizzler__swizzle_ycck(
       &swizzler, &dst_pixbuf, dst_palette,  //
+      dst_x_offset, dst_y_offset,           //
       x_min_incl, x_max_excl,               //
       y_min_incl, y_max_excl,               //
       src0, src1, src2, src3,               //

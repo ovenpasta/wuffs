@@ -39,6 +39,8 @@ wuffs_base__pixel_swizzler__swizzle_ycck(
     const wuffs_base__pixel_swizzler* p,
     wuffs_base__pixel_buffer* dst,
     wuffs_base__slice_u8 dst_palette,
+    uint32_t dst_x_offset,
+    uint32_t dst_y_offset,
     uint32_t x_min_incl,
     uint32_t x_max_excl,
     uint32_t y_min_incl,

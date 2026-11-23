@@ -384,6 +384,8 @@ pri func decoder.swizzle!(
     status = this.swizzler.swizzle_ycck!(
             dst: args.dst,
             dst_palette: args.dst.palette(),
+            dst_x_offset: 0,
+            dst_y_offset: 0,
             x_min_incl: 0,
             x_max_excl: this.width,
             y_min_incl: 0,

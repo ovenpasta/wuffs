@@ -573,6 +573,7 @@ test_wuffs_pixel_swizzler_swizzle_ycck() {
 
         wuffs_base__status status = wuffs_base__pixel_swizzler__swizzle_ycck(
             &swizzler, &dst_pixbuf, wuffs_base__empty_slice_u8(),   //
+            0, 0,                                                   //
             0, src_width, 0, 1,                                     //
             wuffs_base__make_slice_u8(src_array0, src_luma_width),  //
             wuffs_base__make_slice_u8(src_array1, src_chroma_len),  //
@@ -636,6 +637,109 @@ test_wuffs_pixel_swizzler_swizzle_ycck() {
                       ": have 0x%016" PRIX64 ", want 0x%016" PRIX64
                       ", status=%s",
                       q, dst_width, src_width, have, want, status.repr);
+        }
+      }
+    }
+  }
+  return NULL;
+}
+
+const char*  //
+test_wuffs_pixel_swizzler_swizzle_ycck_dst_offset() {
+  CHECK_FOCUS(__func__);
+
+  // The source is a 7×5 image with 4:2:0 chroma subsampling: 8×6 Y samples
+  // and 4×3 Cb and Cr samples (each plane's stride equals its width). The
+  // sample values are arbitrary.
+  uint8_t src_array0[48];
+  uint8_t src_array1[12];
+  uint8_t src_array2[12];
+  for (int i = 0; i < 48; i++) {
+    src_array0[i] = (uint8_t)(0x10 + (37 * i));
+  }
+  for (int i = 0; i < 12; i++) {
+    src_array1[i] = (uint8_t)(0x80 + (53 * i));
+    src_array2[i] = (uint8_t)(0x70 + (29 * i));
+  }
+
+  const uint32_t pixfmts[] = {
+      WUFFS_BASE__PIXEL_FORMAT__BGRA_PREMUL,
+      WUFFS_BASE__PIXEL_FORMAT__BGRX,
+      WUFFS_BASE__PIXEL_FORMAT__BGR_565,
+      WUFFS_BASE__PIXEL_FORMAT__RGB,
+      WUFFS_BASE__PIXEL_FORMAT__RGBA_NONPREMUL,
+      WUFFS_BASE__PIXEL_FORMAT__Y,
+  };
+
+  // The dst image is 11×8. The (5, 4) offset clips the 7×5 source image.
+  const uint32_t dst_width = 11;
+  const uint32_t dst_height = 8;
+  const uint32_t offsets[3][2] = {{0, 0}, {3, 2}, {5, 4}};
+
+  wuffs_base__pixel_swizzler swizzler = {0};
+  static uint8_t scratch_buffer_2k[2048];
+  uint8_t dst_arrays[3][11 * 8 * 4];
+
+  for (size_t f = 0; f < WUFFS_TESTLIB_ARRAY_SIZE(pixfmts); f++) {
+    for (uint8_t ycc_upsampling = 0; ycc_upsampling < 3; ycc_upsampling++) {
+      wuffs_base__pixel_config dst_pixcfg = wuffs_base__null_pixel_config();
+      wuffs_base__pixel_config__set(&dst_pixcfg, pixfmts[f],
+                                    WUFFS_BASE__PIXEL_SUBSAMPLING__NONE,
+                                    dst_width, dst_height);
+      uint32_t bytes_per_pixel = wuffs_base__pixel_format__bits_per_pixel(
+                                     &dst_pixcfg.private_impl.pixfmt) /
+                                 8;
+
+      for (int o = 0; o < 3; o++) {
+        memset(dst_arrays[o], 0, sizeof dst_arrays[o]);
+        wuffs_base__pixel_buffer dst_pixbuf;
+        CHECK_STATUS("set_from_slice",
+                     wuffs_base__pixel_buffer__set_from_slice(
+                         &dst_pixbuf, &dst_pixcfg,
+                         wuffs_base__make_slice_u8(dst_arrays[o],
+                                                   sizeof dst_arrays[o])));
+        CHECK_STATUS(
+            "swizzle_ycck",
+            wuffs_base__pixel_swizzler__swizzle_ycck(
+                &swizzler, &dst_pixbuf, wuffs_base__empty_slice_u8(),  //
+                offsets[o][0], offsets[o][1],                          //
+                0, 7, 0, 5,                                            //
+                wuffs_base__make_slice_u8(src_array0, 48),             //
+                wuffs_base__make_slice_u8(src_array1, 12),             //
+                wuffs_base__make_slice_u8(src_array2, 12),             //
+                wuffs_base__empty_slice_u8(),                          //
+                8, 4, 4, 0,                                            //
+                6, 3, 3, 0,                                            //
+                8, 4, 4, 0,                                            //
+                2, 1, 1, 0,                                            //
+                2, 1, 1, 0,                                            //
+                WUFFS_BASE__YCC_MODEL__BT_601_STUDIO_RANGE,
+                ycc_upsampling,
+                wuffs_base__make_slice_u8(scratch_buffer_2k,
+                                          sizeof scratch_buffer_2k)));
+      }
+
+      // Every dst_arrays[o] should be dst_arrays[0], shifted (and clipped) by
+      // offsets[o], with zeroes elsewhere.
+      for (int o = 1; o < 3; o++) {
+        for (uint32_t y = 0; y < dst_height; y++) {
+          for (uint32_t x = 0; x < dst_width; x++) {
+            const uint8_t* have =
+                &dst_arrays[o][((y * dst_width) + x) * bytes_per_pixel];
+            static const uint8_t zeroes[4] = {0};
+            const uint8_t* want = zeroes;
+            uint32_t ox = offsets[o][0];
+            uint32_t oy = offsets[o][1];
+            if ((ox <= x) && (x < (ox + 7)) && (oy <= y) && (y < (oy + 5))) {
+              want = &dst_arrays[0][(((y - oy) * dst_width) + (x - ox)) *
+                                    bytes_per_pixel];
+            }
+            if (memcmp(have, want, bytes_per_pixel)) {
+              RETURN_FAIL("pixfmt=0x%08" PRIX32 ", ycc_upsampling=%d, o=%d: "
+                          "x=%" PRIu32 ", y=%" PRIu32 ": pixels differ",
+                          pixfmts[f], (int)ycc_upsampling, o, x, y);
+            }
+          }
         }
       }
     }
@@ -937,6 +1041,7 @@ proc g_tests[] = {
     test_wuffs_pixel_buffer_fill_rect,
     test_wuffs_pixel_swizzler_swizzle_interleaved,
     test_wuffs_pixel_swizzler_swizzle_ycck,
+    test_wuffs_pixel_swizzler_swizzle_ycck_dst_offset,
     test_wuffs_upsample_inv_h2v1,
 
     test_wuffs_wbmp_decode_frame_config,
