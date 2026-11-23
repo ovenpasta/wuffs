@@ -85,6 +85,10 @@ pub struct decoder? implements base.image_decoder(
 
         frame_config_io_position : base.u64,
 
+        // The workbuf_len for VP8X images, calculated during
+        // decode_image_config.
+        vp8x_workbuf_len : base.u64,
+
         riff_chunk_length : base.u32,
         rcl_remaining     : base.u32,
         sub_chunk_length  : base.u32,
@@ -359,6 +363,8 @@ pri func decoder.do_decode_image_config_limited_vp8x?(src: base.io_reader) {
     var c32            : base.u32
     var transform_size : base.u32[..= 0x400_0000]
     var status         : base.status
+    var r              : base.range_ii_u64
+    var n              : base.u64
 
     c32 = args.src.read_u32le?()
     if (c32 & 0xFFFF_FFC1) <> 0 {
@@ -432,6 +438,17 @@ pri func decoder.do_decode_image_config_limited_vp8x?(src: base.io_reader) {
     if not status.is_ok() {
         return "#unsupported WebP file"
     }
+
+    // If the VP8X chunk says that there's alpha then, for VP8X+ALPH+VP8, the
+    // workbuf also holds the decoded ALPH chunk, (width × height) bytes, as a
+    // prefix to what the VP8 chunk needs. this.vp8.workbuf_len doesn't count
+    // that prefix until we've seen the ALPH chunk.
+    r = this.vp8.workbuf_len()
+    n = r.get_max_incl()
+    if (this.vp8x_header_flags & 0x10) <> 0 {
+        n ~sat+= (this.width * this.height) as base.u64
+    }
+    this.vp8x_workbuf_len = n.max(no_less_than: this.workbuf_offset_for_transform[3] as base.u64)
 }
 
 pub func decoder.decode_frame_config?(dst: nptr base.frame_config, src: base.io_reader) {
@@ -674,30 +691,20 @@ pub func decoder.tell_me_more?(dst: base.io_writer, minfo: nptr base.more_inform
 }
 
 pub func decoder.workbuf_len() base.range_ii_u64 {
-    var r : base.range_ii_u64
-    var s : base.range_ii_u64
-
     if this.variant == 0x01 {
         return this.vp8.workbuf_len()
+    } else if this.variant == 0x02 {
+        return this.util.make_range_ii_u64(
+                min_incl: this.workbuf_offset_for_transform[3] as base.u64,
+                max_incl: this.workbuf_offset_for_transform[3] as base.u64)
+    } else if this.vp8x_workbuf_len > 0 {
+        return this.util.make_range_ii_u64(
+                min_incl: this.vp8x_workbuf_len,
+                max_incl: this.vp8x_workbuf_len)
     }
-
-    r = this.util.make_range_ii_u64(
-            min_incl: this.workbuf_offset_for_transform[3] as base.u64,
-            max_incl: this.workbuf_offset_for_transform[3] as base.u64)
-
-    if this.variant <> 0x02 {
-        s = this.vp8.workbuf_len()
-        if s.is_empty() {
-            // Empty means that the workbuf_len range isn't known yet.
-            return s
-        }
-
-        r = this.util.make_range_ii_u64(
-                min_incl: s.get_min_incl().max(no_less_than: r.get_min_incl()),
-                max_incl: s.get_max_incl().max(no_less_than: r.get_max_incl()))
-    }
-
-    return r
+    // (min_incl > max_incl) means an empty range_ii_u64. The workbuf length
+    // isn't known yet.
+    return this.util.make_range_ii_u64(min_incl: 1, max_incl: 0)
 }
 
 pri const DISTANCE_MAP : roarray[120] base.u8 = [

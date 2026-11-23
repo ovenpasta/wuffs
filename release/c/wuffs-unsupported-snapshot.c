@@ -16639,6 +16639,7 @@ struct wuffs_webp__decoder__struct {
     uint8_t f_vp8x_header_flags;
     uint8_t f_vp8x_alph_flags;
     uint64_t f_frame_config_io_position;
+    uint64_t f_vp8x_workbuf_len;
     uint32_t f_riff_chunk_length;
     uint32_t f_rcl_remaining;
     uint32_t f_sub_chunk_length;
@@ -91970,6 +91971,8 @@ wuffs_webp__decoder__do_decode_image_config_limited_vp8x(
   uint32_t v_c32 = 0;
   uint32_t v_transform_size = 0;
   wuffs_base__status v_status = wuffs_base__make_status(NULL);
+  wuffs_base__range_ii_u64 v_r = {0};
+  uint64_t v_n = 0;
 
   const uint8_t* iop_a_src = NULL;
   const uint8_t* io0_a_src WUFFS_BASE__POTENTIALLY_UNUSED = NULL;
@@ -92103,6 +92106,12 @@ wuffs_webp__decoder__do_decode_image_config_limited_vp8x(
       status = wuffs_base__make_status(wuffs_webp__error__unsupported_webp_file);
       goto exit;
     }
+    v_r = wuffs_vp8__decoder__workbuf_len(&self->private_data.f_vp8);
+    v_n = wuffs_private_impl__range_ii_u64__get_max_incl(&v_r);
+    if (((uint8_t)(self->private_impl.f_vp8x_header_flags & 16u)) != 0u) {
+      wuffs_private_impl__u64__sat_add_indirect(&v_n, ((uint64_t)((self->private_impl.f_width * self->private_impl.f_height))));
+    }
+    self->private_impl.f_vp8x_workbuf_len = wuffs_base__u64__max(v_n, ((uint64_t)(self->private_impl.f_workbuf_offset_for_transform[3u])));
 
     goto ok;
     ok:
@@ -92850,21 +92859,14 @@ wuffs_webp__decoder__workbuf_len(
     return wuffs_base__utility__empty_range_ii_u64();
   }
 
-  wuffs_base__range_ii_u64 v_r = {0};
-  wuffs_base__range_ii_u64 v_s = {0};
-
   if (self->private_impl.f_variant == 1u) {
     return wuffs_vp8__decoder__workbuf_len(&self->private_data.f_vp8);
+  } else if (self->private_impl.f_variant == 2u) {
+    return wuffs_base__utility__make_range_ii_u64(((uint64_t)(self->private_impl.f_workbuf_offset_for_transform[3u])), ((uint64_t)(self->private_impl.f_workbuf_offset_for_transform[3u])));
+  } else if (self->private_impl.f_vp8x_workbuf_len > 0u) {
+    return wuffs_base__utility__make_range_ii_u64(self->private_impl.f_vp8x_workbuf_len, self->private_impl.f_vp8x_workbuf_len);
   }
-  v_r = wuffs_base__utility__make_range_ii_u64(((uint64_t)(self->private_impl.f_workbuf_offset_for_transform[3u])), ((uint64_t)(self->private_impl.f_workbuf_offset_for_transform[3u])));
-  if (self->private_impl.f_variant != 2u) {
-    v_s = wuffs_vp8__decoder__workbuf_len(&self->private_data.f_vp8);
-    if (wuffs_base__range_ii_u64__is_empty(&v_s)) {
-      return v_s;
-    }
-    v_r = wuffs_base__utility__make_range_ii_u64(wuffs_base__u64__max(wuffs_private_impl__range_ii_u64__get_min_incl(&v_s), wuffs_private_impl__range_ii_u64__get_min_incl(&v_r)), wuffs_base__u64__max(wuffs_private_impl__range_ii_u64__get_max_incl(&v_s), wuffs_private_impl__range_ii_u64__get_max_incl(&v_r)));
-  }
-  return v_r;
+  return wuffs_base__utility__make_range_ii_u64(1u, 0u);
 }
 
 #endif  // !defined(WUFFS_CONFIG__MODULES) || defined(WUFFS_CONFIG__MODULE__WEBP)

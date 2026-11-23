@@ -210,6 +210,66 @@ test_wuffs_webp_decode_interface_vp8x_alpha_lossy() {
 }
 
 const char*  //
+test_wuffs_webp_decode_minimum_workbuf_len() {
+  CHECK_FOCUS(__func__);
+
+  struct {
+    const char* filename;
+    uint32_t want_width;
+    uint32_t want_height;
+    wuffs_base__color_u32_argb_premul want_final_pixel;
+  } test_cases[] = {
+      {
+          .filename = "test/data/bricks-color.lossless.webp",
+          .want_width = 160,
+          .want_height = 120,
+          .want_final_pixel = 0xFF022460,
+      },
+      {
+          .filename = "test/data/bricks-color.lossy.webp",
+          .want_width = 160,
+          .want_height = 120,
+          .want_final_pixel = 0xFF032665,
+      },
+      {
+          .filename =
+              "test/data/hippopotamus.masked-with-muybridge.36x8.lossy.webp",
+          .want_width = 36,
+          .want_height = 8,
+          .want_final_pixel = 0xFFC8EFE2,
+      },
+      {
+          .filename =
+              "test/data/hippopotamus.masked-with-muybridge.lossless.webp",
+          .want_width = 36,
+          .want_height = 28,
+          .want_final_pixel = 0x7D787878,
+      },
+      {
+          .filename = "test/data/hippopotamus.masked-with-muybridge.lossy.webp",
+          .want_width = 36,
+          .want_height = 28,
+          .want_final_pixel = 0x7D787878,
+      },
+  };
+
+  for (size_t tc = 0; tc < WUFFS_TESTLIB_ARRAY_SIZE(test_cases); tc++) {
+    wuffs_webp__decoder* dec = &g_webp_decoder;
+    CHECK_STATUS("initialize",
+                 wuffs_webp__decoder__initialize(
+                     dec, sizeof *dec, WUFFS_VERSION,
+                     WUFFS_INITIALIZE__LEAVE_INTERNAL_BUFFERS_UNINITIALIZED));
+    do_test__wuffs_base__image_decoder__options options = {0};
+    options.use_the_minimum_workbuf_len = true;
+    CHECK_STRING(do_test__wuffs_base__image_decoder(
+        wuffs_webp__decoder__upcast_as__wuffs_base__image_decoder(dec),
+        test_cases[tc].filename, test_cases[tc].want_width,
+        test_cases[tc].want_height, test_cases[tc].want_final_pixel, &options));
+  }
+  return NULL;
+}
+
+const char*  //
 do_test_wuffs_webp_decode_many_small_reads(
     const char* filename,
     uint32_t want_width,
@@ -649,6 +709,13 @@ test_mimic_webp_lossy_decode_uncompressed_alph() {
       "hippopotamus.masked-with-muybridge.uncompressed-alpha.lossy.webp");
 }
 
+const char*  //
+test_mimic_webp_lossy_decode_vp8x_alpha() {
+  CHECK_FOCUS(__func__);
+  return do_test_mimic_webp_decode(
+      "test/data/hippopotamus.masked-with-muybridge.36x8.lossy.webp");
+}
+
 #endif  // WUFFS_MIMIC
 
 // ---------------- WebP Benches
@@ -876,6 +943,7 @@ proc g_tests[] = {
     test_wuffs_webp_decode_interface_vp8x_alpha_lossy,
     test_wuffs_webp_decode_many_small_reads,
     test_wuffs_webp_decode_many_small_reads_uncompressed_alph,
+    test_wuffs_webp_decode_minimum_workbuf_len,
 
 #ifdef WUFFS_MIMIC
 
@@ -895,6 +963,7 @@ proc g_tests[] = {
     test_mimic_webp_lossy_decode_image_4002k_24bpp,
     test_mimic_webp_lossy_decode_sharpness,
     test_mimic_webp_lossy_decode_uncompressed_alph,
+    test_mimic_webp_lossy_decode_vp8x_alpha,
 
 #endif  // WUFFS_MIMIC
 

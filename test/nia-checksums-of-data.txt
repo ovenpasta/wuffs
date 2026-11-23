@@ -134,6 +134,7 @@ BAD 3feec847 test/data/hippopotamus.interlaced.truncated.png
 OK. 96bdbbb3 test/data/hippopotamus.jpeg
 OK. dcbb225a test/data/hippopotamus.lossless.webp
 OK. 56cf6ae1 test/data/hippopotamus.lossy.webp
+OK. 121b64b5 test/data/hippopotamus.masked-with-muybridge.36x8.lossy.webp
 OK. 2535637e test/data/hippopotamus.masked-with-muybridge.etc2.bgra-binary.pkm
 OK. 720180ee test/data/hippopotamus.masked-with-muybridge.etc2.bgra-nonpremul.pkm
 OK. d3bbed27 test/data/hippopotamus.masked-with-muybridge.gif
