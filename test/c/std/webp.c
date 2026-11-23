@@ -393,6 +393,142 @@ test_wuffs_webp_decode_many_small_reads_uncompressed_alph() {
 }
 
 const char*  //
+test_wuffs_webp_decode_restart_frame() {
+  CHECK_FOCUS(__func__);
+
+  struct {
+    const char* filename;
+    uint64_t want_ffio;
+    wuffs_base__color_u32_argb_premul want_final_pixel;
+  } test_cases[] = {
+      {
+          // RIFF, WEBP, VP8L and the 5 byte VP8L header.
+          .filename = "test/data/bricks-color.lossless.webp",
+          .want_ffio = 25,
+          .want_final_pixel = 0xFF022460,
+      },
+      {
+          // RIFF, WEBP, VP8 and the 10 byte VP8 header.
+          .filename = "test/data/bricks-color.lossy.webp",
+          .want_ffio = 30,
+          .want_final_pixel = 0xFF032665,
+      },
+      {
+          // RIFF, WEBP and VP8X.
+          .filename =
+              "test/data/hippopotamus.masked-with-muybridge.lossless.webp",
+          .want_ffio = 30,
+          .want_final_pixel = 0x7D787878,
+      },
+      {
+          // RIFF, WEBP and VP8X.
+          .filename = "test/data/hippopotamus.masked-with-muybridge.lossy.webp",
+          .want_ffio = 30,
+          .want_final_pixel = 0x7D787878,
+      },
+  };
+
+  for (size_t tc = 0; tc < WUFFS_TESTLIB_ARRAY_SIZE(test_cases); tc++) {
+    wuffs_base__io_buffer src = ((wuffs_base__io_buffer){
+        .data = g_src_slice_u8,
+    });
+    CHECK_STRING(read_file(&src, test_cases[tc].filename));
+
+    wuffs_webp__decoder* dec = &g_webp_decoder;
+    CHECK_STATUS("initialize",
+                 wuffs_webp__decoder__initialize(
+                     dec, sizeof *dec, WUFFS_VERSION,
+                     WUFFS_INITIALIZE__LEAVE_INTERNAL_BUFFERS_UNINITIALIZED));
+
+    wuffs_base__image_config ic = ((wuffs_base__image_config){});
+    CHECK_STATUS("decode_image_config",
+                 wuffs_webp__decoder__decode_image_config(dec, &ic, &src));
+    uint64_t ffio = wuffs_base__image_config__first_frame_io_position(&ic);
+    if (ffio != test_cases[tc].want_ffio) {
+      RETURN_FAIL("tc=%zu: first_frame_io_position: have %" PRIu64
+                  ", want %" PRIu64,
+                  tc, ffio, test_cases[tc].want_ffio);
+    }
+    wuffs_base__pixel_config__set(&ic.pixcfg,
+                                  WUFFS_BASE__PIXEL_FORMAT__BGRA_PREMUL,
+                                  WUFFS_BASE__PIXEL_SUBSAMPLING__NONE,
+                                  wuffs_base__pixel_config__width(&ic.pixcfg),
+                                  wuffs_base__pixel_config__height(&ic.pixcfg));
+
+    wuffs_base__pixel_buffer pb = ((wuffs_base__pixel_buffer){});
+    CHECK_STATUS("set_from_slice", wuffs_base__pixel_buffer__set_from_slice(
+                                       &pb, &ic.pixcfg, g_pixel_slice_u8));
+
+    wuffs_base__range_ii_u64 r = wuffs_webp__decoder__workbuf_len(dec);
+    if (wuffs_base__range_ii_u64__is_empty(&r) ||
+        (r.max_incl > g_work_slice_u8.len)) {
+      RETURN_FAIL("tc=%zu: workbuf_len: bad range", tc);
+    }
+    wuffs_base__slice_u8 workbuf =
+        wuffs_base__make_slice_u8(g_work_slice_u8.ptr, r.max_incl);
+
+    for (int i = 0; i < 3; i++) {
+      if (i > 0) {
+        CHECK_STATUS("restart_frame",
+                     wuffs_webp__decoder__restart_frame(dec, 0, ffio));
+        src.meta.ri = ffio;
+
+        if ((wuffs_webp__decoder__num_decoded_frame_configs(dec) != 0) ||
+            (wuffs_webp__decoder__num_decoded_frames(dec) != 0)) {
+          RETURN_FAIL(
+              "tc=%zu: num_decoded_etc after restart #%d: have %" PRIu64
+              ", %" PRIu64 ", want 0, 0",
+              tc, i, wuffs_webp__decoder__num_decoded_frame_configs(dec),
+              wuffs_webp__decoder__num_decoded_frames(dec));
+        }
+      }
+
+      wuffs_base__frame_config fc = ((wuffs_base__frame_config){});
+      wuffs_base__status status =
+          wuffs_webp__decoder__decode_frame_config(dec, &fc, &src);
+      if (!wuffs_base__status__is_ok(&status)) {
+        RETURN_FAIL("tc=%zu: decode_frame_config #%d: %s", tc, i, status.repr);
+      } else if (wuffs_base__frame_config__io_position(&fc) != ffio) {
+        RETURN_FAIL("tc=%zu: io_position #%d: have %" PRIu64 ", want %" PRIu64,
+                    tc, i, wuffs_base__frame_config__io_position(&fc), ffio);
+      }
+
+      status = wuffs_webp__decoder__decode_frame(
+          dec, &pb, &src, WUFFS_BASE__PIXEL_BLEND__SRC, workbuf, NULL);
+      if (!wuffs_base__status__is_ok(&status)) {
+        RETURN_FAIL("tc=%zu: decode_frame #%d: %s", tc, i, status.repr);
+      }
+
+      wuffs_base__color_u32_argb_premul have_final_pixel =
+          wuffs_base__pixel_buffer__color_u32_at(
+              &pb, wuffs_base__pixel_config__width(&ic.pixcfg) - 1,
+              wuffs_base__pixel_config__height(&ic.pixcfg) - 1);
+      if (have_final_pixel != test_cases[tc].want_final_pixel) {
+        RETURN_FAIL("tc=%zu: final pixel #%d: have 0x%08" PRIX32
+                    ", want 0x%08" PRIX32,
+                    tc, i, have_final_pixel, test_cases[tc].want_final_pixel);
+      }
+
+      if ((wuffs_webp__decoder__num_decoded_frame_configs(dec) != 1) ||
+          (wuffs_webp__decoder__num_decoded_frames(dec) != 1)) {
+        RETURN_FAIL("tc=%zu: num_decoded_etc #%d: have %" PRIu64 ", %" PRIu64
+                    ", want 1, 1",
+                    tc, i, wuffs_webp__decoder__num_decoded_frame_configs(dec),
+                    wuffs_webp__decoder__num_decoded_frames(dec));
+      }
+
+      status = wuffs_webp__decoder__decode_frame_config(dec, &fc, &src);
+      if (status.repr != wuffs_base__note__end_of_data) {
+        RETURN_FAIL("tc=%zu: decode_frame_config #%d: have \"%s\", want \"%s\"",
+                    tc, i, status.repr, wuffs_base__note__end_of_data);
+      }
+    }
+  }
+
+  return NULL;
+}
+
+const char*  //
 test_wuffs_webp_decode_filter_alph() {
   CHECK_FOCUS(__func__);
 
@@ -944,6 +1080,7 @@ proc g_tests[] = {
     test_wuffs_webp_decode_many_small_reads,
     test_wuffs_webp_decode_many_small_reads_uncompressed_alph,
     test_wuffs_webp_decode_minimum_workbuf_len,
+    test_wuffs_webp_decode_restart_frame,
 
 #ifdef WUFFS_MIMIC
 

@@ -21,6 +21,10 @@ pri func decoder.do_decode_frame_vp8l?(dst: nptr base.pixel_buffer, src: base.io
     var ti             : base.u64
     var tj             : base.u64
 
+    // The VP8L bitstream starts at a byte boundary.
+    this.bits = 0
+    this.n_bits = 0
+
     this.seen_transform[0] = false
     this.seen_transform[1] = false
     this.seen_transform[2] = false
@@ -127,8 +131,6 @@ pri func decoder.do_decode_frame_vp8l?(dst: nptr base.pixel_buffer, src: base.io
     if not status.is_ok() {
         return status
     }
-
-    this.call_sequence = 0x60
 }
 
 pri func decoder.decode_transform?(src: base.io_reader, workbuf: slice base.u8) {

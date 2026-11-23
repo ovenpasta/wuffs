@@ -16644,6 +16644,7 @@ struct wuffs_webp__decoder__struct {
     uint32_t f_rcl_remaining;
     uint32_t f_sub_chunk_length;
     uint32_t f_sub_chunk_type;
+    uint32_t f_frame_sub_chunk_length;
     uint32_t f_bits;
     uint32_t f_n_bits;
     bool f_seen_transform[4];
@@ -86843,7 +86844,7 @@ wuffs_vp8__decoder__num_decoded_frame_configs(
     return 0;
   }
 
-  if (self->private_impl.f_call_sequence > 32u) {
+  if (self->private_impl.f_call_sequence > 40u) {
     return 1u;
   }
   return 0u;
@@ -90514,6 +90515,8 @@ wuffs_webp__decoder__do_decode_frame_vp8l(
   switch (coro_susp_point) {
     WUFFS_BASE__COROUTINE_SUSPENSION_POINT_0;
 
+    self->private_impl.f_bits = 0u;
+    self->private_impl.f_n_bits = 0u;
     self->private_impl.f_seen_transform[0u] = false;
     self->private_impl.f_seen_transform[1u] = false;
     self->private_impl.f_seen_transform[2u] = false;
@@ -90668,7 +90671,6 @@ wuffs_webp__decoder__do_decode_frame_vp8l(
       }
       goto ok;
     }
-    self->private_impl.f_call_sequence = 96u;
 
     ok:
     self->private_impl.p_do_decode_frame_vp8l = 0;
@@ -91587,6 +91589,7 @@ wuffs_webp__decoder__do_decode_image_config(
       WUFFS_BASE__COROUTINE_SUSPENSION_POINT_MAYBE_SUSPEND(5);
     }
     self->private_impl.f_frame_config_io_position = wuffs_base__u64__sat_add((a_src ? a_src->meta.pos : 0), ((uint64_t)(iop_a_src - io0_a_src)));
+    self->private_impl.f_frame_sub_chunk_length = self->private_impl.f_sub_chunk_length;
     if ((self->private_impl.f_variant != 1u) && (a_dst != NULL)) {
       wuffs_base__image_config__set(
           a_dst,
@@ -92525,8 +92528,13 @@ wuffs_webp__decoder__do_decode_frame(
         if (status.repr) {
           goto suspend;
         }
-        wuffs_vp8__decoder__set_quirk(&self->private_data.f_vp8, 1836840960u, 1u);
       } else if (self->private_impl.f_sub_chunk_type == 540561494u) {
+        wuffs_private_impl__ignore_status(wuffs_vp8__decoder__initialize(&self->private_data.f_vp8,
+            sizeof (wuffs_vp8__decoder), WUFFS_VERSION, WUFFS_INITIALIZE__LEAVE_INTERNAL_BUFFERS_UNINITIALIZED));
+        wuffs_vp8__decoder__set_quirk(&self->private_data.f_vp8, 1836840961u, (((uint64_t)(self->private_impl.f_width)) | (((uint64_t)(self->private_impl.f_height)) << 32u)));
+        if (self->private_impl.f_variant == 64u) {
+          wuffs_vp8__decoder__set_quirk(&self->private_data.f_vp8, 1836840960u, 1u);
+        }
         wuffs_vp8__decoder__set_quirk(&self->private_data.f_vp8, 3u, ((((uint64_t)(self->private_impl.f_sub_chunk_length)) << 1u) | 1u));
         self->private_impl.f_variant = 129u;
         break;
@@ -92651,6 +92659,7 @@ wuffs_webp__decoder__do_decode_frame(
       status = v_status;
       WUFFS_BASE__COROUTINE_SUSPENSION_POINT_MAYBE_SUSPEND(10);
     }
+    self->private_impl.f_call_sequence = 96u;
 
     ok:
     self->private_impl.p_do_decode_frame = 0;
@@ -92728,7 +92737,7 @@ wuffs_webp__decoder__num_decoded_frame_configs(
   if (self->private_impl.f_variant == 1u) {
     return wuffs_vp8__decoder__num_decoded_frame_configs(&self->private_data.f_vp8);
   }
-  if (self->private_impl.f_call_sequence > 32u) {
+  if (self->private_impl.f_call_sequence > 40u) {
     return 1u;
   }
   return 0u;
@@ -92777,16 +92786,22 @@ wuffs_webp__decoder__restart_frame(
 
   wuffs_base__status v_status = wuffs_base__make_status(NULL);
 
-  if (self->private_impl.f_variant == 1u) {
-    v_status = wuffs_vp8__decoder__restart_frame(&self->private_data.f_vp8, a_index, a_io_position);
-    return wuffs_private_impl__status__ensure_not_a_suspension(v_status);
-  }
   if (self->private_impl.f_call_sequence < 32u) {
     return wuffs_base__make_status(wuffs_base__error__bad_call_sequence);
   }
   if ((a_index != 0u) || (a_io_position != self->private_impl.f_frame_config_io_position)) {
     return wuffs_base__make_status(wuffs_base__error__bad_argument);
   }
+  if (self->private_impl.f_variant == 1u) {
+    v_status = wuffs_vp8__decoder__restart_frame(&self->private_data.f_vp8, a_index, a_io_position);
+    if ( ! wuffs_base__status__is_ok(&v_status)) {
+      return wuffs_private_impl__status__ensure_not_a_suspension(v_status);
+    }
+  } else if (self->private_impl.f_variant != 2u) {
+    self->private_impl.f_variant = 4u;
+    self->private_impl.f_vp8x_alph_flags = 0u;
+  }
+  self->private_impl.f_sub_chunk_length = self->private_impl.f_frame_sub_chunk_length;
   self->private_impl.f_call_sequence = 40u;
   return wuffs_base__make_status(NULL);
 }

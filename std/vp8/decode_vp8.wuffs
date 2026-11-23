@@ -507,7 +507,7 @@ pub func decoder.num_animation_loops() base.u32 {
 }
 
 pub func decoder.num_decoded_frame_configs() base.u64 {
-    if this.call_sequence > 0x20 {
+    if this.call_sequence > 0x28 {
         return 1
     }
     return 0
