@@ -57,6 +57,7 @@ OK. 27a6e456 test/data/artificial-thumbhash/VggKDYAW6lZvdYd6d2iZh_p4GE_k.th
 OK. d9ce0e57 test/data/artificial-thumbhash/YJqGPQw7sFlslqhFafSE-Q6oJ1h2iHB2Rw.png
 OK. 4965134c test/data/artificial-thumbhash/YJqGPQw7sFlslqhFafSE-Q6oJ1h2iHB2Rw.th
 OK. 7f235819 test/data/artificial-webp/absolute-segment-filter-levels.webp
+OK. 9ce4d9d4 test/data/artificial-webp/narrow-back-reference.webp
 OK. 076cb375 test/data/bricks-color.bmp
 OK. 1bb2c55a test/data/bricks-color.c3q1.handsum
 OK. 74bb07e1 test/data/bricks-color.c3q2.handsum

@@ -114,6 +114,20 @@ test_wuffs_webp_decode_interface_lossy() {
 }
 
 const char*  //
+test_wuffs_webp_decode_interface_narrow_back_reference() {
+  CHECK_FOCUS(__func__);
+  wuffs_webp__decoder* dec = &g_webp_decoder;
+  CHECK_STATUS("initialize",
+               wuffs_webp__decoder__initialize(
+                   dec, sizeof *dec, WUFFS_VERSION,
+                   WUFFS_INITIALIZE__LEAVE_INTERNAL_BUFFERS_UNINITIALIZED));
+  return do_test__wuffs_base__image_decoder(
+      wuffs_webp__decoder__upcast_as__wuffs_base__image_decoder(dec),
+      "test/data/artificial-webp/narrow-back-reference.webp", 1, 4, 0xFF4080C0,
+      NULL);
+}
+
+const char*  //
 test_wuffs_webp_decode_interface_vp8x_alpha_lossy() {
   CHECK_FOCUS(__func__);
   wuffs_webp__decoder* dec = &g_webp_decoder;
@@ -470,6 +484,13 @@ test_mimic_webp_lossless_decode_image_4002k_24bpp() {
 }
 
 const char*  //
+test_mimic_webp_lossless_decode_narrow_back_reference() {
+  CHECK_FOCUS(__func__);
+  return do_test_mimic_webp_decode(
+      "test/data/artificial-webp/narrow-back-reference.webp");
+}
+
+const char*  //
 test_mimic_webp_lossy_decode_absolute_segment_filter_levels() {
   CHECK_FOCUS(__func__);
   return do_test_mimic_webp_decode(
@@ -740,6 +761,7 @@ proc g_tests[] = {
     test_wuffs_webp_decode_filter_alph,
     test_wuffs_webp_decode_interface_lossless,
     test_wuffs_webp_decode_interface_lossy,
+    test_wuffs_webp_decode_interface_narrow_back_reference,
     test_wuffs_webp_decode_interface_vp8x_alpha_lossy,
     test_wuffs_webp_decode_many_small_reads,
 
@@ -750,6 +772,7 @@ proc g_tests[] = {
     test_mimic_webp_lossless_decode_image_77k_8bpp,
     test_mimic_webp_lossless_decode_image_552k_32bpp,
     test_mimic_webp_lossless_decode_image_4002k_24bpp,
+    test_mimic_webp_lossless_decode_narrow_back_reference,
     test_mimic_webp_lossy_decode_absolute_segment_filter_levels,
     test_mimic_webp_lossy_decode_filter_clip,
     test_mimic_webp_lossy_decode_image_19k_8bpp,

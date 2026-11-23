@@ -236,6 +236,13 @@ pri func decoder.decode_pixels_slow?(dst: slice base.u8, src: base.io_reader, wi
                 dy = dm >> 4
                 dx = 7 ~mod- (dm & 15)
                 back_ref_dist_minus_1 = (args.width * dy) ~mod+ dx
+
+                // For very narrow images, the mapped distance can be less than
+                // 1 (back_ref_dist_minus_1 wraps around to a large value).
+                // RFC 9649 section 3.6.2.2.1 says to treat it as 1 instead.
+                if back_ref_dist_minus_1 >= 0x8000_0000 {
+                    back_ref_dist_minus_1 = 0
+                }
             }
 
             // Apply the (back_ref_len_minus_1, back_ref_dist_minus_1) pair.

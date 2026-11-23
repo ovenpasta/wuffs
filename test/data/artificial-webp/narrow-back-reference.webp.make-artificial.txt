@@ -1,0 +1,87 @@
+# Feed this file to script/make-artificial.go
+
+# This makes a 1×4 VP8L (lossless) image. Its first pixel is a literal and the
+# other three pixels are one back-reference, of length 3, whose distance code
+# is 4. The spec's distance map takes distance code 4 to (xi, yi) = (-1, 1),
+# which, for an image only 1 pixel wide, is a distance of (xi + (yi *
+# image_width)) = 0. That is less than 1.
+#
+# RFC 9649 section 3.6.2.2.1 "Distance Mapping" says that "if (dist < 1) { dist
+# = 1 }", so the back-reference copies the previous pixel. libwebp does this
+# too. All four pixels are therefore 0xFF4080C0 (in ARGB order).
+
+make webp
+
+VP8L {
+	# Signature, width-1, height-1, alpha_is_used, version_number.
+	bits  8 0x2F
+	bits 14 0x0000
+	bits 14 0x0003
+	bits  1 0x0
+	bits  3 0x0
+
+	# No transform, no color cache, no meta prefix codes.
+	bits  1 0x0
+	bits  1 0x0
+	bits  1 0x0
+
+	# Prefix code #1 (green, length prefix codes and color cache codes): a
+	# normal code, with two symbols, 0x080 (a green literal) and 0x102 (the
+	# length prefix code 2, for a length of 3), each with code length 1.
+	#
+	# It starts with the code length code: 4 code length code lengths, for the
+	# symbols 17, 18, 0 and 1 (in kCodeLengthCodeOrder). Only 18 and 1 are
+	# used, each with code length 1, so their canonical codes are "1" and "0".
+	bits  1 0x0
+	bits  4 0x0
+	bits  3 0x0
+	bits  3 0x1
+	bits  3 0x0
+	bits  3 0x1
+	# max_symbol is (2 + ReadBits(2 + (2 * ReadBits(3)))) = 4 code lengths.
+	bits  1 0x1
+	bits  3 0x0
+	bits  2 0x2
+	# Code 18 (repeat zero 11 + ReadBits(7) times): 128 zeroes for 0x000 ..= 0x07F.
+	bits  1 0x1
+	bits  7 0x75
+	# Code 1: code length 1 for 0x080.
+	bits  1 0x0
+	# Code 18: 129 zeroes for 0x081 ..= 0x101.
+	bits  1 0x1
+	bits  7 0x76
+	# Code 1: code length 1 for 0x102. The canonical codes are "0" for 0x080
+	# and "1" for 0x102.
+	bits  1 0x0
+
+	# Prefix codes #2, #3 and #4 (red, blue, alpha): simple codes, each with
+	# one 8-bit symbol, 0x40, 0xC0 and 0xFF.
+	bits  1 0x1
+	bits  1 0x0
+	bits  1 0x1
+	bits  8 0x40
+	bits  1 0x1
+	bits  1 0x0
+	bits  1 0x1
+	bits  8 0xC0
+	bits  1 0x1
+	bits  1 0x0
+	bits  1 0x1
+	bits  8 0xFF
+
+	# Prefix code #5 (distance): a simple code with one 8-bit symbol, the
+	# distance prefix code 3, for a distance code of 4.
+	bits  1 0x1
+	bits  1 0x0
+	bits  1 0x1
+	bits  8 0x03
+
+	# The entropy-coded image. The first pixel is a literal: green 0x80 (code
+	# "0"), red, blue and alpha (zero bits each, as they are one-symbol codes).
+	bits  1 0x0
+
+	# Then a back-reference: length prefix code 2 (code "1"), with no extra
+	# bits, and distance prefix code 3 (zero bits, as it is a one-symbol code),
+	# with no extra bits.
+	bits  1 0x1
+}

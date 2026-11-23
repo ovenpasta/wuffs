@@ -141,6 +141,10 @@ func appendU32BE(b []byte, u uint32) []byte {
 	return append(b, uint8(u>>24), uint8(u>>16), uint8(u>>8), uint8(u))
 }
 
+func appendU32LE(b []byte, u uint32) []byte {
+	return append(b, uint8(u), uint8(u>>8), uint8(u>>16), uint8(u>>24))
+}
+
 func log2(u uint32) (i int32) {
 	for i, pow := uint32(0), uint32(1); i < 32; i, pow = i+1, pow<<1 {
 		if u == pow {
@@ -1511,4 +1515,89 @@ func statePngZlib(line string) (stateFunc, error) {
 		}
 	}
 	return statePngZlib, nil
+}
+
+// ----
+
+func init() {
+	formats["webp"] = stateWebp
+}
+
+var webpGlobals struct {
+	chunkData bytes.Buffer
+	chunkType string
+	bits      uint64
+	nBits     uint32
+}
+
+// stateWebp makes a RIFF container (whose length is calculated) holding a
+// "WEBP" form type and then chunks. Within each chunk, "bits n 0xV" commands
+// write the low n bits of V, least significant bit first (as VP8L does).
+func stateWebp(line string) (stateFunc, error) {
+	g := &webpGlobals
+	switch {
+	case line == "":
+		return stateWebp, nil
+
+	case (len(line) == 6) && (line[4] == ' ') && (line[5] == '{'):
+		g.chunkData.Reset()
+		g.chunkType = line[:4]
+		return stateWebpChunk, nil
+	}
+
+	return nil, fmt.Errorf("bad stateWebp command: %q", line)
+}
+
+func stateWebpChunk(line string) (stateFunc, error) {
+	g := &webpGlobals
+	const (
+		cmdB = "bits "
+	)
+	switch {
+	case line == "}":
+		if g.nBits > 0 {
+			g.chunkData.WriteByte(uint8(g.bits))
+			g.bits = 0
+			g.nBits = 0
+		}
+		if n := g.chunkData.Len(); n > 0xFFFF_FFF0 {
+			return nil, fmt.Errorf("chunkData is too long")
+		}
+		if len(out) == 0 {
+			out = append(out, "RIFF\x00\x00\x00\x00WEBP"...)
+		}
+		out = append(out, g.chunkType...)
+		out = appendU32LE(out, uint32(g.chunkData.Len()))
+		out = append(out, g.chunkData.Bytes()...)
+		if (g.chunkData.Len() & 1) != 0 {
+			out = append(out, 0x00)
+		}
+		riffLength := uint32(len(out) - 8)
+		out[4] = uint8(riffLength >> 0)
+		out[5] = uint8(riffLength >> 8)
+		out[6] = uint8(riffLength >> 16)
+		out[7] = uint8(riffLength >> 24)
+		return stateWebp, nil
+
+	case strings.HasPrefix(line, cmdB):
+		s := strings.TrimSpace(line[len(cmdB):])
+		n, s, ok := parseNum32(s)
+		if !ok || (n > 32) || (s == "") {
+			break
+		}
+		x, s, ok := parseHex32(s)
+		if !ok || (s != "") || ((n < 32) && ((x >> n) != 0)) {
+			break
+		}
+		g.bits |= uint64(x) << g.nBits
+		g.nBits += n
+		for g.nBits >= 8 {
+			g.chunkData.WriteByte(uint8(g.bits))
+			g.bits >>= 8
+			g.nBits -= 8
+		}
+		return stateWebpChunk, nil
+	}
+
+	return nil, fmt.Errorf("bad stateWebpChunk command: %q", line)
 }

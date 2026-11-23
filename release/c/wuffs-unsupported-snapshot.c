@@ -89783,6 +89783,9 @@ wuffs_webp__decoder__decode_pixels_slow(
           v_dy = (v_dm >> 4u);
           v_dx = ((uint32_t)(7u - (v_dm & 15u)));
           v_back_ref_dist_minus_1 = ((uint32_t)((a_width * v_dy) + v_dx));
+          if (v_back_ref_dist_minus_1 >= 2147483648u) {
+            v_back_ref_dist_minus_1 = 0u;
+          }
         }
         v_p_end = (v_p + ((uint64_t)(((v_back_ref_len_minus_1 + 1u) * 4u))));
         v_dist4 = ((((uint64_t)(v_back_ref_dist_minus_1)) * 4u) + 4u);
